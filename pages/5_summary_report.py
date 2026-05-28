@@ -178,17 +178,17 @@ def kpi_card(label, value, sub_text=""):
 
 
 def get_font(size=24, bold=False):
-    font_candidates = []
-
     if bold:
         font_candidates = [
             "C:/Windows/Fonts/malgunbd.ttf",
+            "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
             "/usr/share/fonts/truetype/noto/NotoSansCJK-Bold.ttc",
             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
         ]
     else:
         font_candidates = [
             "C:/Windows/Fonts/malgun.ttf",
+            "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
             "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
             "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
         ]
