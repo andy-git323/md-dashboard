@@ -1112,7 +1112,7 @@ comment_lines = ""
 
 for idx, comment in enumerate(md_comments, start=1):
     comment_lines += (
-        f'<p style="color:#E5E7EB; font-size:15px; line-height:1.75; margin-bottom:12px;">'
+        f'<p style="color:#E5E7EB; font-size:18px; line-height:1.75; margin-bottom:15px;">'
         f'<b style="color:#FFFFFF;">{idx}.</b> {comment}'
         f'</p>'
     )
