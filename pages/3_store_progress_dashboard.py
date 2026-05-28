@@ -4,6 +4,7 @@ import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
+from io import BytesIO
 
 # =====================================================
 # 1. 페이지 설정
@@ -115,6 +116,76 @@ def format_won(value):
 def format_pct(value):
     return f"{value * 100:.1f}%"
 
+def create_store_template_excel():
+    sample_data = pd.DataFrame({
+        "일자": [
+            "2026-05-01", "2026-05-01", "2026-05-01",
+            "2026-05-02", "2026-05-02", "2026-05-02"
+        ],
+        "지역": [
+            "A지역", "A지역", "B지역",
+            "A지역", "B지역", "C지역"
+        ],
+        "매장": [
+            "매장 1", "매장 2", "매장 4",
+            "매장 1", "매장 5", "매장 8"
+        ],
+        "일목표": [
+            5000000, 6500000, 7200000,
+            5200000, 6800000, 7500000
+        ],
+        "일매출": [
+            4800000, 7100000, 6900000,
+            5600000, 6100000, 8200000
+        ],
+        "방문객수": [
+            180, 230, 250,
+            190, 220, 270
+        ],
+        "구매건수": [
+            45, 62, 58,
+            50, 55, 70
+        ]
+    })
+
+    guide_data = pd.DataFrame({
+        "컬럼명": [
+            "일자",
+            "지역",
+            "매장",
+            "일목표",
+            "일매출",
+            "방문객수",
+            "구매건수"
+        ],
+        "설명": [
+            "판매 일자",
+            "지역명: A지역 / B지역 / C지역",
+            "매장명: 매장 1 ~ 매장 10",
+            "해당 일자의 매출 목표",
+            "해당 일자의 실제 매출",
+            "해당 일자의 방문객 수",
+            "해당 일자의 구매 건수"
+        ],
+        "필수여부": [
+            "필수",
+            "필수",
+            "필수",
+            "필수",
+            "필수",
+            "필수",
+            "필수"
+        ]
+    })
+
+    output = BytesIO()
+
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        sample_data.to_excel(writer, index=False, sheet_name="매장판매데이터")
+        guide_data.to_excel(writer, index=False, sheet_name="업로드가이드")
+
+    output.seek(0)
+    return output
 
 def kpi_card(label, value, sub_text=""):
     st.markdown(f"""
@@ -312,6 +383,15 @@ def load_uploaded_store_file(uploaded_file):
 st.sidebar.markdown("---")
 st.sidebar.subheader("📁 데이터 업로드")
 
+template_file = create_store_template_excel()
+
+st.sidebar.download_button(
+    label="📄 매장 업로드 양식 다운로드",
+    data=template_file,
+    file_name="store_progress_upload_template.xlsx",
+    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+)
+
 uploaded_file = st.sidebar.file_uploader(
     "매장 판매 데이터 업로드",
     type=["xlsx", "csv"]
@@ -466,6 +546,47 @@ st.markdown(
 )
 
 st.divider()
+
+# =====================================================
+# 업로드 데이터 요약 / 미리보기
+# =====================================================
+with st.expander("📌 현재 적용 데이터 확인", expanded=False):
+    data_min_date = df["일자"].min().date()
+    data_max_date = df["일자"].max().date()
+    row_count = len(df)
+    store_count = df["매장"].nunique()
+    region_count = df["지역"].nunique()
+    total_data_target = df["일목표"].sum()
+    total_data_sales = df["일매출"].sum()
+
+    c1, c2, c3, c4 = st.columns(4)
+
+    with c1:
+        st.metric("데이터 기간", f"{data_min_date} ~ {data_max_date}")
+
+    with c2:
+        st.metric("전체 행 수", f"{row_count:,}행")
+
+    with c3:
+        st.metric("매장 수", f"{store_count:,}개")
+
+    with c4:
+        st.metric("지역 수", f"{region_count:,}개")
+
+    c5, c6 = st.columns(2)
+
+    with c5:
+        st.metric("전체 목표", format_won(total_data_target))
+
+    with c6:
+        st.metric("전체 매출", format_won(total_data_sales))
+
+    st.markdown("#### 데이터 미리보기")
+    st.dataframe(
+        df.head(20),
+        use_container_width=True,
+        height=300
+    )
 
 # =====================================================
 # 10. 전체 KPI
