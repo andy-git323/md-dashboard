@@ -199,6 +199,107 @@ def create_product_template_excel():
     output.seek(0)
     return output
 
+def create_product_report_excel(cate3_summary, product_summary, period_label, view_type):
+    output = BytesIO()
+
+    cate3_report = cate3_summary.copy()
+    product_report = product_summary.copy()
+
+    # 카테고리 상세 리포트 정리
+    if not cate3_report.empty:
+        cate3_report["판매율"] = np.where(
+            cate3_report["입고수량"] > 0,
+            cate3_report["판매수량"] / cate3_report["입고수량"],
+            0
+        )
+
+        cate3_report["재고수량"] = cate3_report["입고수량"] - cate3_report["판매수량"]
+        cate3_report["재고수량"] = cate3_report["재고수량"].clip(lower=0)
+
+        cate3_report = cate3_report[
+            [
+                "CATE1",
+                "CATE2",
+                "CATE3",
+                "TAG가",
+                "입고수량",
+                "판매수량",
+                "판매율",
+                "할인율",
+                "재고수량",
+                "판매금액"
+            ]
+        ]
+
+    # 상품별 리포트 정리
+    if not product_report.empty:
+        product_report["판매율"] = np.where(
+            product_report["입고수량"] > 0,
+            product_report["판매수량"] / product_report["입고수량"],
+            0
+        )
+
+        product_report["재고수량"] = product_report["입고수량"] - product_report["판매수량"]
+        product_report["재고수량"] = product_report["재고수량"].clip(lower=0)
+
+        product_report = product_report[
+            [
+                "CATE1",
+                "CATE2",
+                "CATE3",
+                "상품명",
+                "TAG가",
+                "입고수량",
+                "판매수량",
+                "판매율",
+                "할인율",
+                "재고수량",
+                "판매금액"
+            ]
+        ]
+
+    # 요약 시트
+    summary_report = pd.DataFrame({
+        "구분": [
+            "조회 기준",
+            "조회 기간",
+            "총 판매금액",
+            "총 판매수량",
+            "상품 수",
+            "카테고리 수"
+        ],
+        "값": [
+            view_type,
+            period_label,
+            product_report["판매금액"].sum() if not product_report.empty else 0,
+            product_report["판매수량"].sum() if not product_report.empty else 0,
+            product_report["상품명"].nunique() if "상품명" in product_report.columns else 0,
+            cate3_report["CATE3"].nunique() if "CATE3" in cate3_report.columns else 0
+        ]
+    })
+
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        summary_report.to_excel(writer, index=False, sheet_name="요약")
+        cate3_report.to_excel(writer, index=False, sheet_name="카테고리상세")
+        product_report.sort_values("판매금액", ascending=False).to_excel(
+            writer,
+            index=False,
+            sheet_name="상품별_금액순"
+        )
+        product_report.sort_values("판매율", ascending=False).to_excel(
+            writer,
+            index=False,
+            sheet_name="상품별_판매율순"
+        )
+        product_report.sort_values("판매율", ascending=True).to_excel(
+            writer,
+            index=False,
+            sheet_name="상품별_LOW"
+        )
+
+    output.seek(0)
+    return output
+
 def kpi_card(label, value, sub_text=""):
     st.markdown(f"""
     <div class="kpi-card">
@@ -1045,13 +1146,26 @@ st.plotly_chart(fig_trend, use_container_width=True)
 st.divider()
 st.markdown('<div class="section-title">⑧ 데이터 다운로드</div>', unsafe_allow_html=True)
 
-download_df = product_summary.copy()
-csv = download_df.to_csv(index=False).encode("utf-8-sig")
+report_file = create_product_report_excel(
+    cate3_summary=cate3_summary,
+    product_summary=product_summary,
+    period_label=period_label,
+    view_type=view_type
+)
 
 st.download_button(
-    label="📥 상품별 분석 CSV 다운로드",
+    label="📊 상품 분석 리포트 엑셀 다운로드",
+    data=report_file,
+    file_name=f"product_analysis_report_{view_type}_{period_label}.xlsx",
+    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+)
+
+csv = product_summary.to_csv(index=False).encode("utf-8-sig")
+
+st.download_button(
+    label="📥 상품별 원본 요약 CSV 다운로드",
     data=csv,
-    file_name=f"product_category_analysis_{view_type}_{period_label}.csv",
+    file_name=f"product_summary_{view_type}_{period_label}.csv",
     mime="text/csv"
 )
 
