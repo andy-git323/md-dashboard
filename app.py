@@ -86,5 +86,4 @@ elif menu == "📦 카테고리 분석":
     exec(open("product_category_dashboard.py", encoding="utf-8").read())
 
 elif menu == "📋 MD 플랜 빌더":
->>>>>>> 202e8a8b7b32446112832f6db9b4a6c848701843
     exec(open("md_plan_builder.py", encoding="utf-8").read())
