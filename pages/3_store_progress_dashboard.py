@@ -212,7 +212,118 @@ def create_sample_store_data():
     return df
 
 
-df = create_sample_store_data()
+# =====================================================
+# 6. 데이터 불러오기: 업로드 파일 or 샘플 데이터
+# =====================================================
+REQUIRED_COLUMNS = [
+    "일자",
+    "지역",
+    "매장",
+    "일목표",
+    "일매출",
+    "방문객수",
+    "구매건수"
+]
+
+
+def prepare_store_data(input_df):
+    df_prepared = input_df.copy()
+
+    # 컬럼명 앞뒤 공백 제거
+    df_prepared.columns = df_prepared.columns.astype(str).str.strip()
+
+    # 필수 컬럼 확인
+    missing_cols = [
+        col for col in REQUIRED_COLUMNS
+        if col not in df_prepared.columns
+    ]
+
+    if missing_cols:
+        st.error(f"업로드 파일에 필요한 컬럼이 없습니다: {missing_cols}")
+        st.info("""
+        필요한 컬럼:
+        일자, 지역, 매장, 일목표, 일매출, 방문객수, 구매건수
+        """)
+        st.stop()
+
+    # 날짜 변환
+    df_prepared["일자"] = pd.to_datetime(df_prepared["일자"], errors="coerce")
+
+    if df_prepared["일자"].isna().any():
+        st.error("일자 컬럼에 날짜로 변환할 수 없는 값이 있습니다.")
+        st.stop()
+
+    # 숫자 컬럼 변환
+    number_cols = ["일목표", "일매출", "방문객수", "구매건수"]
+
+    for col in number_cols:
+        df_prepared[col] = pd.to_numeric(df_prepared[col], errors="coerce").fillna(0)
+
+    # 객단가 컬럼이 없으면 자동 생성
+    if "객단가" not in df_prepared.columns:
+        df_prepared["객단가"] = np.where(
+            df_prepared["구매건수"] > 0,
+            df_prepared["일매출"] / df_prepared["구매건수"],
+            0
+        )
+    else:
+        df_prepared["객단가"] = pd.to_numeric(
+            df_prepared["객단가"],
+            errors="coerce"
+        ).fillna(0)
+
+    # 주차 / 월 / 요일 생성
+    df_prepared["주차"] = df_prepared["일자"].dt.strftime("%Y-W%U")
+    df_prepared["월"] = df_prepared["일자"].dt.strftime("%Y-%m")
+    df_prepared["요일"] = df_prepared["일자"].dt.day_name()
+
+    # 지역 / 매장 순서 적용
+    df_prepared["지역"] = pd.Categorical(
+        df_prepared["지역"],
+        categories=REGION_ORDER,
+        ordered=True
+    )
+
+    df_prepared["매장"] = pd.Categorical(
+        df_prepared["매장"],
+        categories=STORE_ORDER,
+        ordered=True
+    )
+
+    return df_prepared
+
+
+def load_uploaded_store_file(uploaded_file):
+    file_name = uploaded_file.name.lower()
+
+    if file_name.endswith(".csv"):
+        uploaded_df = pd.read_csv(uploaded_file)
+    else:
+        excel_file = pd.ExcelFile(uploaded_file)
+
+        if "매장판매데이터" in excel_file.sheet_names:
+            uploaded_df = pd.read_excel(uploaded_file, sheet_name="매장판매데이터")
+        else:
+            uploaded_df = pd.read_excel(uploaded_file, sheet_name=excel_file.sheet_names[0])
+
+    return uploaded_df
+
+
+st.sidebar.markdown("---")
+st.sidebar.subheader("📁 데이터 업로드")
+
+uploaded_file = st.sidebar.file_uploader(
+    "매장 판매 데이터 업로드",
+    type=["xlsx", "csv"]
+)
+
+if uploaded_file is not None:
+    uploaded_df = load_uploaded_store_file(uploaded_file)
+    df = prepare_store_data(uploaded_df)
+    st.sidebar.success("업로드 데이터 적용됨")
+else:
+    df = create_sample_store_data()
+    st.sidebar.info("샘플 데이터 사용 중")
 
 # =====================================================
 # 6. 사이드바
