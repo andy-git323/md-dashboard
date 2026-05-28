@@ -277,7 +277,136 @@ def create_sample_product_data():
     return df
 
 
-df = create_sample_product_data()
+# =====================================================
+# 6. 데이터 불러오기: 업로드 파일 or 샘플 데이터
+# =====================================================
+REQUIRED_COLUMNS = [
+    "일자",
+    "CATE1",
+    "CATE2",
+    "CATE3",
+    "상품명",
+    "TAG가",
+    "입고수량",
+    "판매수량",
+    "판매금액",
+    "할인율"
+]
+
+
+def prepare_product_data(input_df):
+    df_prepared = input_df.copy()
+
+    # 컬럼명 앞뒤 공백 제거
+    df_prepared.columns = df_prepared.columns.astype(str).str.strip()
+
+    # 필수 컬럼 확인
+    missing_cols = [
+        col for col in REQUIRED_COLUMNS
+        if col not in df_prepared.columns
+    ]
+
+    if missing_cols:
+        st.error(f"업로드 파일에 필요한 컬럼이 없습니다: {missing_cols}")
+        st.info("""
+        필요한 컬럼:
+        일자, CATE1, CATE2, CATE3, 상품명, TAG가, 입고수량, 판매수량, 판매금액, 할인율
+        """)
+        st.stop()
+
+    # 날짜 변환
+    df_prepared["일자"] = pd.to_datetime(df_prepared["일자"], errors="coerce")
+
+    if df_prepared["일자"].isna().any():
+        st.error("일자 컬럼에 날짜로 변환할 수 없는 값이 있습니다.")
+        st.stop()
+
+    # 숫자 컬럼 변환
+    number_cols = ["TAG가", "입고수량", "판매수량", "판매금액", "할인율"]
+
+    for col in number_cols:
+        df_prepared[col] = pd.to_numeric(df_prepared[col], errors="coerce").fillna(0)
+
+    # 할인율이 10, 15 같은 값으로 들어온 경우 0.10, 0.15로 변환
+    if df_prepared["할인율"].max() > 1:
+        df_prepared["할인율"] = df_prepared["할인율"] / 100
+
+    # 실판매가 컬럼이 없으면 계산해서 생성
+    if "실판매가" not in df_prepared.columns:
+        df_prepared["실판매가"] = np.where(
+            df_prepared["판매수량"] > 0,
+            df_prepared["판매금액"] / df_prepared["판매수량"],
+            df_prepared["TAG가"] * (1 - df_prepared["할인율"])
+        )
+
+    # 상품코드 컬럼이 없으면 임시 생성
+    if "상품코드" not in df_prepared.columns:
+        df_prepared["상품코드"] = (
+            df_prepared["CATE2"].astype(str).str[:2]
+            + "-"
+            + df_prepared["CATE3"].astype(str).str[:2]
+            + "-"
+            + df_prepared.groupby(["CATE2", "CATE3", "상품명"]).ngroup().astype(str)
+        )
+
+    # 주차 / 월 / 요일 생성
+    df_prepared["주차"] = df_prepared["일자"].dt.strftime("%Y-W%U")
+    df_prepared["월"] = df_prepared["일자"].dt.strftime("%Y-%m")
+    df_prepared["요일"] = df_prepared["일자"].dt.day_name()
+
+    # 카테고리 순서 적용
+    df_prepared["CATE1"] = pd.Categorical(
+        df_prepared["CATE1"],
+        categories=CATE1_ORDER,
+        ordered=True
+    )
+
+    df_prepared["CATE2"] = pd.Categorical(
+        df_prepared["CATE2"],
+        categories=CATE2_ORDER,
+        ordered=True
+    )
+
+    df_prepared["CATE3"] = pd.Categorical(
+        df_prepared["CATE3"],
+        categories=CATE3_ORDER,
+        ordered=True
+    )
+
+    return df_prepared
+
+
+def load_uploaded_product_file(uploaded_file):
+    file_name = uploaded_file.name.lower()
+
+    if file_name.endswith(".csv"):
+        uploaded_df = pd.read_csv(uploaded_file)
+    else:
+        excel_file = pd.ExcelFile(uploaded_file)
+
+        if "상품판매데이터" in excel_file.sheet_names:
+            uploaded_df = pd.read_excel(uploaded_file, sheet_name="상품판매데이터")
+        else:
+            uploaded_df = pd.read_excel(uploaded_file, sheet_name=excel_file.sheet_names[0])
+
+    return uploaded_df
+
+
+st.sidebar.markdown("---")
+st.sidebar.subheader("📁 데이터 업로드")
+
+uploaded_file = st.sidebar.file_uploader(
+    "상품 판매 데이터 업로드",
+    type=["xlsx", "csv"]
+)
+
+if uploaded_file is not None:
+    uploaded_df = load_uploaded_product_file(uploaded_file)
+    df = prepare_product_data(uploaded_df)
+    st.sidebar.success("업로드 데이터 적용됨")
+else:
+    df = create_sample_product_data()
+    st.sidebar.info("샘플 데이터 사용 중")
 
 # =====================================================
 # 6. 사이드바 필터
