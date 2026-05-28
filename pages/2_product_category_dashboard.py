@@ -4,6 +4,7 @@ import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
+from io import BytesIO
 
 # =====================================================
 # 1. 페이지 설정
@@ -150,6 +151,53 @@ def format_million_label(value):
         return ""
     return f"{value / 1_000_000:.0f}M"
 
+def create_product_template_excel():
+    sample_data = pd.DataFrame({
+        "일자": ["2026-05-01", "2026-05-01", "2026-05-01"],
+        "CATE1": ["APP", "APP", "ACC"],
+        "CATE2": ["OUTER", "INNER", "CAP"],
+        "CATE3": ["JACKET", "T-SHIRT", "BALL CAP"],
+        "상품명": ["JACKET ITEM 1", "T-SHIRT ITEM 1", "BALL CAP ITEM 1"],
+        "TAG가": [129000, 39000, 49000],
+        "입고수량": [500, 800, 600],
+        "판매수량": [20, 50, 30],
+        "판매금액": [2322000, 1755000, 1323000],
+        "할인율": [0.10, 0.10, 0.10],
+        "실판매가": [116100, 35100, 44100]
+    })
+
+    guide_data = pd.DataFrame({
+        "컬럼명": [
+            "일자", "CATE1", "CATE2", "CATE3", "상품명",
+            "TAG가", "입고수량", "판매수량", "판매금액", "할인율", "실판매가"
+        ],
+        "설명": [
+            "판매 일자",
+            "대분류: APP / ACC",
+            "중분류: OUTER / INNER / BOTTOM / CAP / BAG / SHOES / ETC",
+            "세부 카테고리",
+            "상품명",
+            "정상 판매가",
+            "해당 상품의 총 입고수량",
+            "해당 기간 판매수량",
+            "해당 기간 판매금액",
+            "할인율: 0.1 또는 10 모두 가능",
+            "실제 판매단가, 없으면 자동 계산 가능"
+        ],
+        "필수여부": [
+            "필수", "필수", "필수", "필수", "필수",
+            "필수", "필수", "필수", "필수", "필수", "선택"
+        ]
+    })
+
+    output = BytesIO()
+
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        sample_data.to_excel(writer, index=False, sheet_name="상품판매데이터")
+        guide_data.to_excel(writer, index=False, sheet_name="업로드가이드")
+
+    output.seek(0)
+    return output
 
 def kpi_card(label, value, sub_text=""):
     st.markdown(f"""
@@ -395,6 +443,15 @@ def load_uploaded_product_file(uploaded_file):
 st.sidebar.markdown("---")
 st.sidebar.subheader("📁 데이터 업로드")
 
+template_file = create_product_template_excel()
+
+st.sidebar.download_button(
+    label="📄 상품 업로드 양식 다운로드",
+    data=template_file,
+    file_name="product_category_upload_template.xlsx",
+    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+)
+
 uploaded_file = st.sidebar.file_uploader(
     "상품 판매 데이터 업로드",
     type=["xlsx", "csv"]
@@ -513,7 +570,46 @@ st.markdown(
 )
 
 st.divider()
+# =====================================================
+# 업로드 데이터 요약 / 미리보기
+# =====================================================
+with st.expander("📌 현재 적용 데이터 확인", expanded=False):
+    data_min_date = df["일자"].min().date()
+    data_max_date = df["일자"].max().date()
+    row_count = len(df)
+    item_count = df["상품명"].nunique()
+    cate2_count = df["CATE2"].nunique()
+    total_upload_sales = df["판매금액"].sum()
+    total_upload_qty = df["판매수량"].sum()
 
+    c1, c2, c3, c4 = st.columns(4)
+
+    with c1:
+        st.metric("데이터 기간", f"{data_min_date} ~ {data_max_date}")
+
+    with c2:
+        st.metric("전체 행 수", f"{row_count:,}행")
+
+    with c3:
+        st.metric("상품 수", f"{item_count:,}개")
+
+    with c4:
+        st.metric("CATE2 수", f"{cate2_count:,}개")
+
+    c5, c6 = st.columns(2)
+
+    with c5:
+        st.metric("전체 판매금액", format_won(total_upload_sales))
+
+    with c6:
+        st.metric("전체 판매수량", format_qty(total_upload_qty))
+
+    st.markdown("#### 데이터 미리보기")
+    st.dataframe(
+        df.head(20),
+        use_container_width=True,
+        height=300
+    )
 # =====================================================
 # 9. 전체 KPI
 # =====================================================
