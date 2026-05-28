@@ -393,115 +393,256 @@ def create_summary_report_png(
     comments
 ):
     width, height = 1600, 900
-    bg_color = "#0E1117"
-    title_color = "#FFFFFF"
-    sub_color = "#D1D5DB"
-    card_bg = "#171B26"
+
+    # 컬러 설정
+    bg_color = "#0B0F19"
+    panel_color = "#111827"
+    card_color = "#171B26"
+    card_light = "#1F2937"
     border_color = "#2A2F3A"
+    point_blue = "#60A5FA"
+    point_orange = "#F59E0B"
+    point_red = "#EF4444"
+    white = "#FFFFFF"
+    gray = "#D1D5DB"
+    muted = "#9CA3AF"
 
     img = Image.new("RGB", (width, height), bg_color)
     draw = ImageDraw.Draw(img)
 
-    title_font = get_font(42, bold=True)
+    title_font = get_font(44, bold=True)
     subtitle_font = get_font(20, bold=False)
-    section_font = get_font(26, bold=True)
-    text_font = get_font(18, bold=False)
-    text_bold_font = get_font(18, bold=True)
+    section_font = get_font(24, bold=True)
+    kpi_label_font = get_font(18, bold=False)
+    kpi_value_font = get_font(34, bold=True)
+    small_font = get_font(15, bold=False)
+    body_font = get_font(18, bold=False)
+    body_bold_font = get_font(18, bold=True)
 
+    # =====================================================
+    # 배경 포인트
+    # =====================================================
+    draw.rounded_rectangle(
+        [(0, 0), (1600, 900)],
+        radius=0,
+        fill=bg_color
+    )
+
+    # 상단 라인
+    draw.rectangle([(0, 0), (1600, 8)], fill=point_blue)
+
+    # 우측 장식 박스
+    draw.rounded_rectangle(
+        [(1250, 36), (1525, 118)],
+        radius=24,
+        fill="#0F172A",
+        outline="#1E293B",
+        width=2
+    )
+    draw.text((1280, 58), "MD DATA REPORT", fill=muted, font=small_font)
+    draw.text((1280, 82), f"{view_type} · {period_label}", fill=white, font=body_bold_font)
+
+    # =====================================================
     # 헤더
-    draw.text((60, 40), "MD Weekly Summary", fill=title_color, font=title_font)
+    # =====================================================
+    draw.text((60, 42), "MD Weekly Summary", fill=white, font=title_font)
     draw.text(
-        (60, 95),
-        f"기준: {view_type} · {period_label}",
-        fill=sub_color,
+        (60, 100),
+        "Product Sales · Category Performance · Risk Item Check",
+        fill=gray,
         font=subtitle_font
     )
 
-    # KPI 제목
-    draw.text((60, 145), "핵심 KPI", fill=title_color, font=section_font)
+    # 기준일 뱃지
+    draw.rounded_rectangle(
+        [(60, 138), (360, 176)],
+        radius=19,
+        fill="#111827",
+        outline="#263244",
+        width=2
+    )
+    draw.text((82, 147), f"기준: {view_type} · {period_label}", fill=gray, font=small_font)
 
+    # =====================================================
     # KPI 카드
-    card_y = 190
-    card_w = 350
-    card_h = 130
-    gap = 20
+    # =====================================================
+    def draw_kpi_card(x, y, w, h, label, value, sub, accent):
+        draw.rounded_rectangle(
+            [(x, y), (x + w, y + h)],
+            radius=22,
+            fill=card_color,
+            outline=border_color,
+            width=2
+        )
+        draw.rectangle([(x, y), (x + 8, y + h)], fill=accent)
+        draw.text((x + 28, y + 22), label, fill=gray, font=kpi_label_font)
+        draw.text((x + 28, y + 58), value, fill=white, font=kpi_value_font)
+        draw.text((x + 28, y + 108), sub, fill=muted, font=small_font)
 
-    draw_card(draw, 60, card_y, card_w, card_h, "총 판매금액", format_won(total_sales), f"{view_type} 기준")
-    draw_card(draw, 60 + (card_w + gap), card_y, card_w, card_h, "판매수량", format_qty(total_qty), "총 판매수량")
-    draw_card(draw, 60 + 2 * (card_w + gap), card_y, card_w, card_h, "상품 수", f"{total_items:,}개", "분석 상품 수")
-    draw_card(draw, 60 + 3 * (card_w + gap), card_y, card_w, card_h, "재고주의", f"{stock_risk_count:,}개", "판매율 낮음 + 재고 높음")
+    kpi_y = 210
+    kpi_w = 355
+    kpi_h = 145
+    gap = 24
 
-    # TOP/LOW 제목
-    draw.text((60, 350), "TOP / LOW 요약", fill=title_color, font=section_font)
+    draw_kpi_card(
+        60,
+        kpi_y,
+        kpi_w,
+        kpi_h,
+        "총 판매금액",
+        format_won(total_sales),
+        f"{view_type} 기준",
+        point_blue
+    )
 
-    left_x = 60
-    right_x = 820
-    box_y = 395
-    box_w = 720
-    box_h = 160
+    draw_kpi_card(
+        60 + (kpi_w + gap),
+        kpi_y,
+        kpi_w,
+        kpi_h,
+        "판매수량",
+        format_qty(total_qty),
+        "총 판매수량",
+        "#93C5FD"
+    )
+
+    draw_kpi_card(
+        60 + 2 * (kpi_w + gap),
+        kpi_y,
+        kpi_w,
+        kpi_h,
+        "상품 수",
+        f"{total_items:,}개",
+        "분석 상품 수",
+        point_orange
+    )
+
+    draw_kpi_card(
+        60 + 3 * (kpi_w + gap),
+        kpi_y,
+        kpi_w,
+        kpi_h,
+        "재고주의",
+        f"{stock_risk_count:,}개",
+        "판매율 낮음 + 재고 높음",
+        point_red
+    )
+
+    # =====================================================
+    # 중간 TOP / LOW 패널
+    # =====================================================
+    draw.text((60, 395), "TOP / LOW Item Summary", fill=white, font=section_font)
+
+    box_y = 438
+    box_w = 710
+    box_h = 180
+
+    # 왼쪽 TOP
+    draw.rounded_rectangle(
+        [(60, box_y), (60 + box_w, box_y + box_h)],
+        radius=24,
+        fill=panel_color,
+        outline=border_color,
+        width=2
+    )
 
     draw.rounded_rectangle(
-        [(left_x, box_y), (left_x + box_w, box_y + box_h)],
-        radius=20, fill=card_bg, outline=border_color, width=2
+        [(84, box_y + 22), (238, box_y + 55)],
+        radius=16,
+        fill="#1E3A8A"
     )
+    draw.text((102, box_y + 29), "BEST ITEM", fill=white, font=small_font)
+
+    draw.text((84, box_y + 72), str(best_item["상품명"]), fill=white, font=body_bold_font)
+
+    best_lines = [
+        f"카테고리  {best_item['CATE2']} / {best_item['CATE3']}",
+        f"판매금액  {format_won(best_item['판매금액'])}",
+        f"판매수량  {format_qty(best_item['판매수량'])}",
+        f"판매율    {format_pct(best_item['판매율'])}",
+    ]
+
+    y_cursor = box_y + 103
+    for line in best_lines:
+        draw.text((84, y_cursor), line, fill=gray, font=small_font)
+        y_cursor += 24
+
+    # 오른쪽 LOW
+    right_x = 830
+
     draw.rounded_rectangle(
         [(right_x, box_y), (right_x + box_w, box_y + box_h)],
-        radius=20, fill=card_bg, outline=border_color, width=2
+        radius=24,
+        fill=panel_color,
+        outline=border_color,
+        width=2
     )
-
-    draw.text((left_x + 24, box_y + 20), "판매금액 TOP 상품", fill=title_color, font=text_bold_font)
-    top_lines = [
-        f"상품명: {best_item['상품명']}",
-        f"카테고리: {best_item['CATE2']} / {best_item['CATE3']}",
-        f"판매금액: {format_won(best_item['판매금액'])}",
-        f"판매수량: {format_qty(best_item['판매수량'])}",
-        f"판매율: {format_pct(best_item['판매율'])}",
-    ]
-    y_cursor = box_y + 55
-    for line in top_lines:
-        draw.text((left_x + 24, y_cursor), line, fill=sub_color, font=text_font)
-        y_cursor += 24
-
-    draw.text((right_x + 24, box_y + 20), "판매율 LOW 상품", fill=title_color, font=text_bold_font)
-    low_lines = [
-        f"상품명: {worst_item['상품명']}",
-        f"카테고리: {worst_item['CATE2']} / {worst_item['CATE3']}",
-        f"판매금액: {format_won(worst_item['판매금액'])}",
-        f"재고수량: {format_qty(worst_item['재고수량'])}",
-        f"판매율: {format_pct(worst_item['판매율'])}",
-    ]
-    y_cursor = box_y + 55
-    for line in low_lines:
-        draw.text((right_x + 24, y_cursor), line, fill=sub_color, font=text_font)
-        y_cursor += 24
-
-    # 코멘트 제목
-    draw.text((60, 590), "MD 자동 코멘트", fill=title_color, font=section_font)
-
-    comment_x = 60
-    comment_y = 635
-    comment_w = 1480
-    comment_h = 210
 
     draw.rounded_rectangle(
-        [(comment_x, comment_y), (comment_x + comment_w, comment_y + comment_h)],
-        radius=20, fill=card_bg, outline=border_color, width=2
+        [(right_x + 24, box_y + 22), (right_x + 178, box_y + 55)],
+        radius=16,
+        fill="#7F1D1D"
+    )
+    draw.text((right_x + 42, box_y + 29), "LOW ITEM", fill=white, font=small_font)
+
+    draw.text((right_x + 24, box_y + 72), str(worst_item["상품명"]), fill=white, font=body_bold_font)
+
+    low_lines = [
+        f"카테고리  {worst_item['CATE2']} / {worst_item['CATE3']}",
+        f"판매금액  {format_won(worst_item['판매금액'])}",
+        f"재고수량  {format_qty(worst_item['재고수량'])}",
+        f"판매율    {format_pct(worst_item['판매율'])}",
+    ]
+
+    y_cursor = box_y + 103
+    for line in low_lines:
+        draw.text((right_x + 24, y_cursor), line, fill=gray, font=small_font)
+        y_cursor += 24
+
+    # =====================================================
+    # 하단 MD 코멘트
+    # =====================================================
+    comment_y = 665
+    draw.text((60, comment_y - 42), "MD Comment", fill=white, font=section_font)
+
+    draw.rounded_rectangle(
+        [(60, comment_y), (1540, 842)],
+        radius=24,
+        fill=card_color,
+        outline=border_color,
+        width=2
     )
 
-    y_cursor = comment_y + 22
-    for idx, comment in enumerate(comments[:5], start=1):
-        wrapped = textwrap.wrap(f"{idx}. {comment}", width=85)
-        for line in wrapped:
-            draw.text((comment_x + 24, y_cursor), line, fill=sub_color, font=text_font)
-            y_cursor += 24
+    y_cursor = comment_y + 24
+
+    for idx, comment in enumerate(comments[:4], start=1):
+        bullet = f"{idx}."
+        draw.text((90, y_cursor), bullet, fill=point_blue, font=body_bold_font)
+
+        wrapped = textwrap.wrap(comment, width=86)
+        line_x = 128
+
+        for line in wrapped[:2]:
+            draw.text((line_x, y_cursor), line, fill=gray, font=body_font)
+            y_cursor += 25
+
         y_cursor += 8
 
-    footer_text = f"TOP CATE2: {top_cate2} / 비중: {format_pct(top_cate2_share)}"
-    draw.text((60, 860), footer_text, fill="#9CA3AF", font=get_font(16, bold=False))
+    # =====================================================
+    # Footer
+    # =====================================================
+    footer_left = f"TOP CATE2: {top_cate2} · 비중 {format_pct(top_cate2_share)}"
+    footer_right = "Generated by MD Allboard"
+
+    draw.text((60, 862), footer_left, fill=muted, font=small_font)
+
+    footer_right_width = draw.textlength(footer_right, font=small_font)
+    draw.text((1540 - footer_right_width, 862), footer_right, fill=muted, font=small_font)
 
     output = BytesIO()
     img.save(output, format="PNG")
     output.seek(0)
+
     return output
 
 
