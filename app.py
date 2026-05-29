@@ -196,6 +196,43 @@ with col4:
         <span class="tag">일정 관리</span>
     </div>
     """, unsafe_allow_html=True)
+col5, col6 = st.columns(2)
+
+with col5:
+    st.markdown("""
+    <div class="card">
+        <div class="card-title">📊 Product Summary Report</div>
+        <div class="card-text">
+            상품 데이터를 보고용 한 장 요약 형태로 정리하는 페이지입니다.<br><br>
+            - 총 판매금액 / 판매수량 / 상품 수 확인<br>
+            - TOP 상품 / LOW 상품 요약<br>
+            - MD 자동 코멘트 생성<br>
+            - Summary Report 엑셀 다운로드<br>
+            - 16:9 보고용 이미지 다운로드
+        </div>
+        <span class="tag">보고용 요약</span>
+        <span class="tag">상품 분석</span>
+        <span class="tag">이미지 다운로드</span>
+    </div>
+    """, unsafe_allow_html=True)
+
+with col6:
+    st.markdown("""
+    <div class="card">
+        <div class="card-title">🏬 Store Summary Report</div>
+        <div class="card-text">
+            매장 데이터를 보고용 한 장 요약 형태로 정리하는 페이지입니다.<br><br>
+            - 총 목표 / 총 매출 / 평균 진도율 확인<br>
+            - BEST 매장 / LOW 매장 요약<br>
+            - 지역별 / 매장별 흐름 확인<br>
+            - Store 자동 코멘트 생성<br>
+            - 16:9 보고용 이미지 다운로드
+        </div>
+        <span class="tag">매장 요약</span>
+        <span class="tag">진도율</span>
+        <span class="tag">보고 이미지</span>
+    </div>
+    """, unsafe_allow_html=True)
 
 # =====================================================
 # 5. 사용 방법
@@ -274,6 +311,14 @@ with col6:
         구매건수
     </div>
     """, unsafe_allow_html=True)
+st.markdown("""
+<div class="notice-box">
+    <b>📊 Summary Report 사용 안내</b><br><br>
+    Product Summary Report와 Store Summary Report는 각각 상품/매장 데이터를 보고용 한 장 요약 형태로 정리하는 페이지입니다.<br>
+    각 페이지에서 엑셀 또는 CSV 파일을 업로드하면 KPI, TOP/LOW 항목, 자동 코멘트, 보고용 이미지 다운로드가 가능합니다.<br><br>
+    업로드 파일이 없을 경우 샘플 데이터 기준으로 화면이 표시됩니다.
+</div>
+""", unsafe_allow_html=True)
 
 # =====================================================
 # 7. 보안 안내
@@ -304,6 +349,8 @@ st.markdown("""
     - 업로드 양식 다운로드 기능 완료<br>
     - 업로드 데이터 미리보기 기능 완료<br>
     - 상품 분석 리포트 다운로드 기능 완료<br><br>
+    - Product Summary Report 이미지 다운로드 기능 완료<br>
+    - Store Summary Report 이미지 다운로드 기능 완료<br>
 
     <b>다음 고도화 후보</b><br>
     - 업로드 오류 메시지 개선<br>
@@ -311,6 +358,8 @@ st.markdown("""
     - 공통 함수 utils 폴더 분리<br>
     - 관리자 업로드 / 공유형 데이터 구조 검토<br>
     - 사내 서버 또는 ERP 직접 연결 구조 검토
+    - Product Summary Report 이미지 다운로드 기능 완료<br>
+    - Store Summary Report 이미지 다운로드 기능 완료<br>
 </div>
 """, unsafe_allow_html=True)
 
