@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
 import plotly.express as px
 import urllib.request
 import urllib.error
@@ -107,14 +106,7 @@ def kpi_card(label, value, sub_text=""):
     """, unsafe_allow_html=True)
 
 
-def format_pct(value):
-    try:
-        return f"{float(value):.1f}%"
-    except:
-        return "0.0%"
-
-
-def apply_dark_chart_style(fig, height=430):
+def apply_dark_chart_style(fig, height=430, y_title="검색 관심도"):
     fig.update_layout(
         height=height,
         margin=dict(l=0, r=0, t=20, b=20),
@@ -128,7 +120,7 @@ def apply_dark_chart_style(fig, height=430):
             zerolinecolor="#262730"
         ),
         yaxis=dict(
-            title="검색 관심도",
+            title=y_title,
             tickfont=dict(size=13, color="#E5E7EB"),
             title_font=dict(size=14, color="#FFFFFF"),
             gridcolor="#262730",
@@ -158,7 +150,6 @@ def parse_keyword_groups(raw_text):
     groups = []
 
     for line in lines:
-        # 예: 레인부츠: 레인부츠, 장화, 여성 레인부츠
         if ":" in line:
             group_name, keyword_text = line.split(":", 1)
             group_name = group_name.strip()
@@ -180,6 +171,160 @@ def parse_keyword_groups(raw_text):
     return groups[:5]
 
 
+# =====================================================
+# 4. MD 매핑 함수
+# =====================================================
+def get_md_mapping(keyword):
+    keyword = str(keyword).lower()
+
+    mapping_rules = [
+        {
+            "keywords": ["레인부츠", "장화", "rain"],
+            "category": "SHOES",
+            "sub_category": "RAIN BOOTS",
+            "season": "장마 / 여름",
+            "action": "소량 테스트"
+        },
+        {
+            "keywords": ["바람막이", "윈드브레이커", "windbreaker"],
+            "category": "OUTER",
+            "sub_category": "WINDBREAKER",
+            "season": "봄 / 가을",
+            "action": "간절기 상품 검토"
+        },
+        {
+            "keywords": ["버뮤다", "버뮤다팬츠", "쇼츠", "반바지"],
+            "category": "BOTTOM",
+            "sub_category": "SHORTS",
+            "season": "여름",
+            "action": "하의 실루엣 반영"
+        },
+        {
+            "keywords": ["키링", "인형키링", "백참", "bag charm"],
+            "category": "GOODS",
+            "sub_category": "KEYRING",
+            "season": "상시",
+            "action": "굿즈 테스트"
+        },
+        {
+            "keywords": ["크롭", "크롭셔츠", "셔츠"],
+            "category": "TOP",
+            "sub_category": "SHIRT",
+            "season": "봄 / 여름",
+            "action": "스타일링 반응 확인"
+        },
+        {
+            "keywords": ["가디건", "니트"],
+            "category": "TOP",
+            "sub_category": "KNIT",
+            "season": "봄 / 가을",
+            "action": "간절기 TOP 검토"
+        },
+        {
+            "keywords": ["후드", "후드티", "맨투맨", "스웨트"],
+            "category": "TOP",
+            "sub_category": "SWEAT",
+            "season": "가을 / 겨울",
+            "action": "기본물 운영 검토"
+        },
+        {
+            "keywords": ["가방", "백", "토트백", "숄더백"],
+            "category": "ACC",
+            "sub_category": "BAG",
+            "season": "상시",
+            "action": "ACC 확장 검토"
+        },
+        {
+            "keywords": ["향수", "디퓨저", "프래그런스", "fragrance"],
+            "category": "BEAUTY",
+            "sub_category": "FRAGRANCE",
+            "season": "상시",
+            "action": "라이프스타일 확장"
+        }
+    ]
+
+    for rule in mapping_rules:
+        for word in rule["keywords"]:
+            if word in keyword:
+                return {
+                    "MD카테고리": rule["category"],
+                    "세부카테고리": rule["sub_category"],
+                    "시즌": rule["season"],
+                    "기본액션": rule["action"]
+                }
+
+    return {
+        "MD카테고리": "ETC",
+        "세부카테고리": "기타",
+        "시즌": "확인 필요",
+        "기본액션": "추가 검토"
+    }
+
+
+def get_season_fit_score(season_text, today_date):
+    month = today_date.month
+    season_text = str(season_text)
+
+    if month in [3, 4, 5]:
+        current_season = "봄"
+    elif month in [6, 7, 8]:
+        current_season = "여름"
+    elif month in [9, 10, 11]:
+        current_season = "가을"
+    else:
+        current_season = "겨울"
+
+    if "상시" in season_text:
+        return 80
+
+    if current_season in season_text:
+        return 100
+
+    next_season_map = {
+        "봄": "여름",
+        "여름": "가을",
+        "가을": "겨울",
+        "겨울": "봄"
+    }
+
+    next_season = next_season_map.get(current_season)
+
+    if next_season and next_season in season_text:
+        return 85
+
+    if "확인 필요" in season_text:
+        return 50
+
+    return 50
+
+
+def calculate_action_score(recent_avg, change_rate, season_score):
+    interest_score = min(max(float(recent_avg), 0), 100)
+    change_score = min(max((float(change_rate) + 100) / 2, 0), 100)
+
+    action_score = (
+        interest_score * 0.4 +
+        change_score * 0.4 +
+        season_score * 0.2
+    )
+
+    return round(action_score, 1)
+
+
+def get_action_decision(action_score):
+    if action_score >= 80:
+        return "즉시 검토"
+    elif action_score >= 60:
+        return "모니터링"
+    elif action_score >= 40:
+        return "보류"
+    else:
+        return "제외"
+
+
+# =====================================================
+# 5. 네이버 API
+# =====================================================
 def call_naver_datalab_api(
     client_id,
     client_secret,
@@ -253,6 +398,9 @@ def convert_api_result_to_df(api_result):
     return df
 
 
+# =====================================================
+# 6. 분석 함수
+# =====================================================
 def make_trend_summary(trend_df):
     summary_rows = []
 
@@ -281,23 +429,45 @@ def make_trend_summary(trend_df):
         else:
             status = "유지"
 
+        md_mapping = get_md_mapping(group_name)
+
+        season_score = get_season_fit_score(
+            md_mapping["시즌"],
+            datetime.today().date()
+        )
+
+        action_score = calculate_action_score(
+            recent_avg=end_avg,
+            change_rate=change_rate,
+            season_score=season_score
+        )
+
+        action_decision = get_action_decision(action_score)
+
         summary_rows.append({
             "키워드그룹": group_name,
+            "MD카테고리": md_mapping["MD카테고리"],
+            "세부카테고리": md_mapping["세부카테고리"],
+            "시즌": md_mapping["시즌"],
+            "기본액션": md_mapping["기본액션"],
+            "상태": status,
+            "Action Score": action_score,
+            "판단": action_decision,
+            "시즌적합도": season_score,
             "초반평균": start_avg,
             "최근평균": end_avg,
             "변화폭": change,
             "변화율": change_rate,
             "최고관심도": max_value,
-            "평균관심도": avg_value,
-            "상태": status
+            "평균관심도": avg_value
         })
 
     summary_df = pd.DataFrame(summary_rows)
 
     if not summary_df.empty:
         summary_df = summary_df.sort_values(
-            ["변화율", "최근평균"],
-            ascending=[False, False]
+            ["Action Score", "변화율", "최근평균"],
+            ascending=[False, False, False]
         ).reset_index(drop=True)
 
     return summary_df
@@ -309,10 +479,28 @@ def make_md_comments(summary_df):
     if summary_df.empty:
         return ["데이터 없음"]
 
+    top_action = summary_df.sort_values("Action Score", ascending=False).iloc[0]
     top_rising = summary_df.sort_values("변화율", ascending=False).iloc[0]
     top_interest = summary_df.sort_values("최근평균", ascending=False).iloc[0]
-    falling_df = summary_df[summary_df["상태"].isin(["하락", "급하락"])]
+
     rising_df = summary_df[summary_df["상태"].isin(["상승", "급상승"])]
+    falling_df = summary_df[summary_df["상태"].isin(["하락", "급하락"])]
+
+    comments.append(
+        f"Action TOP: {top_action['키워드그룹']} / {top_action['Action Score']:.1f}점"
+    )
+
+    comments.append(
+        f"판단: {top_action['판단']}"
+    )
+
+    comments.append(
+        f"적용 카테고리: {top_action['MD카테고리']} / {top_action['세부카테고리']}"
+    )
+
+    comments.append(
+        f"시즌 연결: {top_action['시즌']} / {top_action['시즌적합도']:.0f}점"
+    )
 
     comments.append(
         f"급상승 키워드: {top_rising['키워드그룹']} / {top_rising['변화율']:.1f}%"
@@ -322,42 +510,12 @@ def make_md_comments(summary_df):
         f"관심도 TOP: {top_interest['키워드그룹']} / {top_interest['최근평균']:.1f}"
     )
 
-    if len(rising_df) > 0:
-        comments.append(
-            f"상승 키워드: {len(rising_df)}개"
-        )
-    else:
-        comments.append(
-            "상승 키워드: 없음"
-        )
-
-    if len(falling_df) > 0:
-        comments.append(
-            f"하락 키워드: {len(falling_df)}개"
-        )
-    else:
-        comments.append(
-            "하락 키워드: 없음"
-        )
-
-    status = top_rising["상태"]
-    keyword = top_rising["키워드그룹"]
-
-    if status in ["급상승", "상승"]:
-        comments.append(
-            f"MD 적용: {keyword} 상품화 검토"
-        )
-    elif status in ["급하락", "하락"]:
-        comments.append(
-            f"MD 적용: {keyword} 물량 보수적 운영"
-        )
-    else:
-        comments.append(
-            f"MD 적용: {keyword} 반응 유지 관찰"
-        )
+    comments.append(
+        f"상승/하락: 상승 {len(rising_df)}개 / 하락 {len(falling_df)}개"
+    )
 
     comments.append(
-        "우선 액션: 상승 키워드 상품/콘텐츠 연결"
+        f"우선 액션: {top_action['기본액션']}"
     )
 
     return comments
@@ -380,7 +538,7 @@ def create_excel_download(trend_df, summary_df, comments):
 
 
 # =====================================================
-# 4. 사이드바 입력
+# 7. 사이드바 입력
 # =====================================================
 st.sidebar.markdown("---")
 st.sidebar.title("🔎 Naver Trend 설정")
@@ -454,7 +612,7 @@ age_label = st.sidebar.selectbox(
 run_button = st.sidebar.button("네이버 트렌드 조회", type="primary")
 
 # =====================================================
-# 5. 헤더
+# 8. 헤더
 # =====================================================
 st.markdown('<div class="title">🔎 Naver Trend Insight</div>', unsafe_allow_html=True)
 st.markdown(
@@ -465,7 +623,7 @@ st.markdown(
 st.divider()
 
 # =====================================================
-# 6. API 키 확인
+# 9. API 키 확인
 # =====================================================
 client_id, client_secret = get_naver_secrets()
 
@@ -479,11 +637,8 @@ if not keyword_groups:
     st.warning("키워드를 1개 이상 입력해주세요.")
     st.stop()
 
-if len(keyword_groups) > 5:
-    st.warning("네이버 데이터랩 검색어 그룹은 최대 5개까지만 사용하도록 제한했습니다.")
-
 # =====================================================
-# 7. API 호출
+# 10. API 호출
 # =====================================================
 if run_button:
     with st.spinner("네이버 데이터랩 API 호출 중..."):
@@ -516,7 +671,7 @@ if run_button:
     st.session_state["naver_time_unit_label"] = time_unit_label
 
 # =====================================================
-# 8. 결과 표시
+# 11. 결과 표시
 # =====================================================
 if "naver_trend_df" not in st.session_state:
     st.info("왼쪽에서 키워드와 기간을 설정한 뒤 `네이버 트렌드 조회` 버튼을 눌러주세요.")
@@ -530,8 +685,9 @@ period_text = st.session_state.get("naver_period", "")
 unit_text = st.session_state.get("naver_time_unit_label", "")
 
 # =====================================================
-# 9. KPI
+# 12. KPI
 # =====================================================
+top_action = summary_df.sort_values("Action Score", ascending=False).iloc[0]
 top_rising = summary_df.sort_values("변화율", ascending=False).iloc[0]
 top_interest = summary_df.sort_values("최근평균", ascending=False).iloc[0]
 rising_count = len(summary_df[summary_df["상태"].isin(["상승", "급상승"])])
@@ -542,19 +698,35 @@ st.markdown('<div class="section-title">① 트렌드 핵심 요약</div>', unsa
 c1, c2, c3, c4 = st.columns(4)
 
 with c1:
-    kpi_card("급상승 키워드", top_rising["키워드그룹"], f"변화율 {top_rising['변화율']:.1f}%")
+    kpi_card(
+        "Action TOP",
+        top_action["키워드그룹"],
+        f"{top_action['Action Score']:.1f}점 / {top_action['판단']}"
+    )
 
 with c2:
-    kpi_card("관심도 TOP", top_interest["키워드그룹"], f"최근평균 {top_interest['최근평균']:.1f}")
+    kpi_card(
+        "급상승 키워드",
+        top_rising["키워드그룹"],
+        f"변화율 {top_rising['변화율']:.1f}%"
+    )
 
 with c3:
-    kpi_card("상승 키워드", f"{rising_count}개", "상승/급상승 기준")
+    kpi_card(
+        "관심도 TOP",
+        top_interest["키워드그룹"],
+        f"최근평균 {top_interest['최근평균']:.1f}"
+    )
 
 with c4:
-    kpi_card("하락 키워드", f"{falling_count}개", "하락/급하락 기준")
+    kpi_card(
+        "상승 / 하락",
+        f"{rising_count} / {falling_count}",
+        "상승·급상승 / 하락·급하락"
+    )
 
 # =====================================================
-# 10. 그래프
+# 13. 키워드 트렌드 그래프
 # =====================================================
 st.markdown('<div class="section-title">② 키워드 트렌드 그래프</div>', unsafe_allow_html=True)
 
@@ -571,15 +743,63 @@ fig.update_traces(
     marker=dict(size=7)
 )
 
-fig = apply_dark_chart_style(fig, height=480)
+fig = apply_dark_chart_style(fig, height=480, y_title="검색 관심도")
 st.plotly_chart(fig, use_container_width=True)
 
 # =====================================================
-# 11. 요약 테이블
+# 14. Action Score 랭킹 차트
 # =====================================================
-st.markdown('<div class="section-title">③ 키워드별 상승/하락 요약</div>', unsafe_allow_html=True)
+st.markdown('<div class="section-title">③ MD Action Score Ranking</div>', unsafe_allow_html=True)
+
+fig_score = px.bar(
+    summary_df.sort_values("Action Score", ascending=True),
+    x="Action Score",
+    y="키워드그룹",
+    color="판단",
+    orientation="h",
+    text="Action Score",
+    color_discrete_map={
+        "즉시 검토": "#EF4444",
+        "모니터링": "#F59E0B",
+        "보류": "#60A5FA",
+        "제외": "#6B7280"
+    }
+)
+
+fig_score.update_traces(
+    texttemplate="%{text:.1f}점",
+    textposition="outside",
+    textfont=dict(color="#FFFFFF", size=14)
+)
+
+fig_score = apply_dark_chart_style(fig_score, height=360, y_title="키워드")
+fig_score.update_layout(
+    xaxis=dict(
+        title="Action Score",
+        range=[0, 105],
+        tickfont=dict(size=13, color="#E5E7EB"),
+        gridcolor="#262730",
+        zerolinecolor="#262730"
+    ),
+    yaxis=dict(
+        title=None,
+        tickfont=dict(size=14, color="#FFFFFF"),
+        gridcolor="#262730",
+        zerolinecolor="#262730"
+    )
+)
+
+st.plotly_chart(fig_score, use_container_width=True)
+
+# =====================================================
+# 15. 요약 테이블
+# =====================================================
+st.markdown('<div class="section-title">④ 키워드별 상승/하락 요약</div>', unsafe_allow_html=True)
 
 display_summary = summary_df.copy()
+
+display_summary["Action Score"] = display_summary["Action Score"].map(lambda x: f"{x:.1f}점")
+display_summary["시즌적합도"] = display_summary["시즌적합도"].map(lambda x: f"{x:.0f}점")
 display_summary["초반평균"] = display_summary["초반평균"].map(lambda x: f"{x:.1f}")
 display_summary["최근평균"] = display_summary["최근평균"].map(lambda x: f"{x:.1f}")
 display_summary["변화폭"] = display_summary["변화폭"].map(lambda x: f"{x:.1f}")
@@ -587,16 +807,34 @@ display_summary["변화율"] = display_summary["변화율"].map(lambda x: f"{x:.
 display_summary["최고관심도"] = display_summary["최고관심도"].map(lambda x: f"{x:.1f}")
 display_summary["평균관심도"] = display_summary["평균관심도"].map(lambda x: f"{x:.1f}")
 
+summary_columns = [
+    "키워드그룹",
+    "MD카테고리",
+    "세부카테고리",
+    "시즌",
+    "기본액션",
+    "상태",
+    "Action Score",
+    "판단",
+    "시즌적합도",
+    "초반평균",
+    "최근평균",
+    "변화폭",
+    "변화율",
+    "최고관심도",
+    "평균관심도"
+]
+
 st.dataframe(
-    display_summary,
+    display_summary[summary_columns],
     use_container_width=True,
-    height=300
+    height=360
 )
 
 # =====================================================
-# 12. MD 코멘트
+# 16. MD 코멘트
 # =====================================================
-st.markdown('<div class="section-title">④ MD 적용 코멘트</div>', unsafe_allow_html=True)
+st.markdown('<div class="section-title">⑤ MD 적용 코멘트</div>', unsafe_allow_html=True)
 
 comment_lines = ""
 
@@ -616,7 +854,7 @@ comment_box = f"""
 st.markdown(comment_box, unsafe_allow_html=True)
 
 # =====================================================
-# 13. 원본 데이터
+# 17. 원본 데이터
 # =====================================================
 with st.expander("📌 원본 트렌드 데이터 확인", expanded=False):
     st.write(f"조회 기간: {period_text}")
@@ -628,10 +866,10 @@ with st.expander("📌 원본 트렌드 데이터 확인", expanded=False):
     )
 
 # =====================================================
-# 14. 다운로드
+# 18. 다운로드
 # =====================================================
 st.divider()
-st.markdown('<div class="section-title">⑤ 다운로드</div>', unsafe_allow_html=True)
+st.markdown('<div class="section-title">⑥ 다운로드</div>', unsafe_allow_html=True)
 
 excel_file = create_excel_download(
     trend_df=trend_df,
