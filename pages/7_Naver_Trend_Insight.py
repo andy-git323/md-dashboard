@@ -541,42 +541,90 @@ def make_md_comments(summary_df):
         return ["데이터 없음"]
 
     top_action = summary_df.sort_values("Action Score", ascending=False).iloc[0]
-    top_rising = summary_df.sort_values("변화율", ascending=False).iloc[0]
-    top_interest = summary_df.sort_values("최근평균", ascending=False).iloc[0]
 
     rising_df = summary_df[summary_df["상태"].isin(["상승", "급상승"])]
     falling_df = summary_df[summary_df["상태"].isin(["하락", "급하락"])]
+    monitor_df = summary_df[summary_df["판단"].isin(["즉시 검토", "모니터링"])]
+
+    # 카테고리 요약
+    if not monitor_df.empty:
+        main_categories = (
+            monitor_df["MD카테고리"]
+            .value_counts()
+            .head(2)
+            .index
+            .tolist()
+        )
+        category_text = " / ".join(main_categories)
+    else:
+        category_text = top_action["MD카테고리"]
+
+    # 시즌 요약
+    season_candidates = (
+        summary_df["시즌"]
+        .value_counts()
+        .head(2)
+        .index
+        .tolist()
+    )
+    season_text = " / ".join(season_candidates)
+
+    # 상승 키워드 요약
+    if not rising_df.empty:
+        rising_keywords = ", ".join(rising_df["키워드그룹"].head(3).tolist())
+    else:
+        rising_keywords = "없음"
+
+    # 하락 키워드 요약
+    if not falling_df.empty:
+        falling_keywords = ", ".join(falling_df["키워드그룹"].head(3).tolist())
+    else:
+        falling_keywords = "없음"
 
     comments.append(
-        f"Action TOP: {top_action['키워드그룹']} / {top_action['Action Score']:.1f}점"
+        f"상품기획: {category_text} 중심 검토"
     )
 
     comments.append(
-        f"판단: {top_action['판단']}"
+        f"시즌 방향: {season_text} 키워드 확인"
     )
 
     comments.append(
-        f"적용 카테고리: {top_action['MD카테고리']} / {top_action['세부카테고리']}"
+        f"상승 키워드: {rising_keywords}"
     )
 
     comments.append(
-        f"시즌 연결: {top_action['시즌']} / {top_action['시즌적합도']:.0f}점"
+        f"주의 키워드: {falling_keywords}"
+    )
+
+    if len(monitor_df) > 0:
+        comments.append(
+            f"우선 검토: {len(monitor_df)}개 키워드"
+        )
+    else:
+        comments.append(
+            "우선 검토: 신규 확대보다 관찰"
+        )
+
+    if top_action["판단"] == "즉시 검토":
+        comments.append(
+            "소싱 방향: 빠른 샘플 / 소량 테스트"
+        )
+    elif top_action["판단"] == "모니터링":
+        comments.append(
+            "소싱 방향: 즉시 발주보다 반응 추적"
+        )
+    else:
+        comments.append(
+            "소싱 방향: 물량 확대 보류"
+        )
+
+    comments.append(
+        "콘텐츠 방향: 상승 키워드 중심 스타일링 노출"
     )
 
     comments.append(
-        f"급상승 키워드: {top_rising['키워드그룹']} / {top_rising['변화율']:.1f}%"
-    )
-
-    comments.append(
-        f"관심도 TOP: {top_interest['키워드그룹']} / {top_interest['최근평균']:.1f}"
-    )
-
-    comments.append(
-        f"상승/하락: 상승 {len(rising_df)}개 / 하락 {len(falling_df)}개"
-    )
-
-    comments.append(
-        f"우선 액션: {top_action['기본액션']}"
+        "다음 액션: 상위 2개 키워드만 우선 검토"
     )
 
     return comments
