@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 import urllib.request
 import urllib.error
 import json
@@ -232,8 +233,78 @@ def parse_keyword_groups(raw_text):
     return groups[:5]
 
 
+def format_month_week(date_value):
+    date_value = pd.to_datetime(date_value)
+    week_num = ((date_value.day - 1) // 7) + 1
+    return f"{date_value.month}월 {week_num}주차"
+
+
 # =====================================================
-# 4. MD 매핑 함수
+# 4. 단위별 비교축 함수
+# =====================================================
+def add_compare_axis(df, time_unit):
+    df = df.copy()
+    df["기간"] = pd.to_datetime(df["기간"])
+
+    if time_unit == "date":
+        df["비교축"] = df["기간"].dt.dayofyear
+        df["라벨"] = df["기간"].dt.strftime("%m-%d")
+
+    elif time_unit == "week":
+        # 주간은 dayofyear가 아니라 연중 주차로 비교
+        df["비교축"] = ((df["기간"].dt.dayofyear - 1) // 7) + 1
+        df["라벨"] = df["기간"].dt.strftime("%m-%d")
+
+    elif time_unit == "month":
+        df["비교축"] = df["기간"].dt.month
+        df["라벨"] = df["기간"].dt.strftime("%m월")
+
+    else:
+        df["비교축"] = df["기간"].dt.dayofyear
+        df["라벨"] = df["기간"].dt.strftime("%m-%d")
+
+    return df.sort_values("비교축").reset_index(drop=True)
+
+
+def get_axis_setting(time_unit):
+    if time_unit == "date":
+        return {
+            "title": "1월~12월 기준 비교",
+            "tickvals": [1, 32, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335],
+            "ticktext": ["1월", "2월", "3월", "4월", "5월", "6월", "7월", "8월", "9월", "10월", "11월", "12월"],
+            "range": [1, 366],
+            "caution_width": 45
+        }
+
+    if time_unit == "week":
+        return {
+            "title": "연중 주차 기준 비교",
+            "tickvals": [1, 5, 9, 14, 18, 22, 27, 31, 36, 40, 45, 49],
+            "ticktext": ["1월", "2월", "3월", "4월", "5월", "6월", "7월", "8월", "9월", "10월", "11월", "12월"],
+            "range": [1, 53],
+            "caution_width": 6
+        }
+
+    if time_unit == "month":
+        return {
+            "title": "월 기준 비교",
+            "tickvals": list(range(1, 13)),
+            "ticktext": [f"{i}월" for i in range(1, 13)],
+            "range": [1, 12],
+            "caution_width": 2
+        }
+
+    return {
+        "title": "1월~12월 기준 비교",
+        "tickvals": [1, 32, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335],
+        "ticktext": ["1월", "2월", "3월", "4월", "5월", "6월", "7월", "8월", "9월", "10월", "11월", "12월"],
+        "range": [1, 366],
+        "caution_width": 45
+    }
+
+
+# =====================================================
+# 5. MD 매핑 함수
 # =====================================================
 def get_md_mapping(keyword):
     keyword = str(keyword).lower()
@@ -384,7 +455,7 @@ def get_action_decision(action_score):
 
 
 # =====================================================
-# 5. 네이버 API
+# 6. 네이버 API
 # =====================================================
 def call_naver_datalab_api(
     client_id,
@@ -460,7 +531,7 @@ def convert_api_result_to_df(api_result):
 
 
 # =====================================================
-# 6. 분석 함수
+# 7. 분석 함수
 # =====================================================
 def make_trend_summary(trend_df):
     summary_rows = []
@@ -532,12 +603,6 @@ def make_trend_summary(trend_df):
         ).reset_index(drop=True)
 
     return summary_df
-
-
-def format_month_week(date_value):
-    date_value = pd.to_datetime(date_value)
-    week_num = ((date_value.day - 1) // 7) + 1
-    return f"{date_value.month}월 {week_num}주차"
 
 
 def shift_date_to_year(date_value, target_year):
@@ -682,6 +747,51 @@ def make_seasonal_planning(last_year_df, summary_df, target_year):
     return seasonal_df
 
 
+def make_future_pattern_df(selected_last_year_df, selected_this_year_df):
+    if selected_last_year_df.empty or selected_this_year_df.empty:
+        return pd.DataFrame()
+
+    selected_last_year_df = selected_last_year_df.sort_values("비교축").reset_index(drop=True)
+    selected_this_year_df = selected_this_year_df.sort_values("비교축").reset_index(drop=True)
+
+    current_axis = selected_this_year_df["비교축"].max()
+    current_last_value = float(selected_this_year_df.iloc[-1]["관심도"])
+
+    last_before = selected_last_year_df[
+        selected_last_year_df["비교축"] <= current_axis
+    ].copy()
+
+    if last_before.empty:
+        return pd.DataFrame()
+
+    nearest_idx = (last_before["비교축"] - current_axis).abs().idxmin()
+    last_anchor_value = float(last_before.loc[nearest_idx, "관심도"])
+
+    if last_anchor_value <= 0:
+        last_anchor_value = 1
+
+    future_base = selected_last_year_df[
+        selected_last_year_df["비교축"] > current_axis
+    ].copy()
+
+    if future_base.empty:
+        return pd.DataFrame()
+
+    future_df = future_base.copy()
+    future_df["구분"] = "전년도 패턴 참고선"
+
+    # 최종 확정 공식:
+    # 올해 미래 참고값 = 올해 마지막 실제값 × (전년도 미래값 / 전년도 동일시점값)
+    # 100 이상도 자르지 않음
+    future_df["관심도"] = current_last_value * (
+        future_df["관심도"] / last_anchor_value
+    )
+
+    future_df["관심도"] = future_df["관심도"].clip(lower=0)
+
+    return future_df
+
+
 def make_md_comments(summary_df):
     comments = []
 
@@ -769,7 +879,7 @@ def create_excel_download(trend_df, summary_df, comments, seasonal_df=None):
 
 
 # =====================================================
-# 7. 사이드바 입력
+# 8. 사이드바 입력
 # =====================================================
 st.sidebar.markdown("---")
 st.sidebar.title("🔎 Naver Trend 설정")
@@ -883,7 +993,7 @@ age_label = st.sidebar.selectbox(
 run_button = st.sidebar.button("네이버 트렌드 조회", type="primary")
 
 # =====================================================
-# 8. 헤더
+# 9. 헤더
 # =====================================================
 st.markdown('<div class="title">🔎 Naver Trend Insight</div>', unsafe_allow_html=True)
 st.markdown(
@@ -894,7 +1004,7 @@ st.markdown(
 st.divider()
 
 # =====================================================
-# 9. API 키 확인
+# 10. API 키 확인
 # =====================================================
 client_id, client_secret = get_naver_secrets()
 
@@ -909,7 +1019,7 @@ if not keyword_groups:
     st.stop()
 
 # =====================================================
-# 10. API 호출
+# 11. API 호출
 # =====================================================
 if run_button:
     with st.spinner("네이버 데이터랩 API 호출 중..."):
@@ -963,10 +1073,11 @@ if run_button:
     st.session_state["naver_keyword_groups"] = keyword_groups
     st.session_state["naver_period"] = f"{start_date} ~ {end_date}"
     st.session_state["naver_time_unit_label"] = time_unit_label
+    st.session_state["naver_time_unit"] = time_unit
     st.session_state["naver_target_year"] = end_date.year
 
 # =====================================================
-# 11. 결과 표시
+# 12. 결과 표시
 # =====================================================
 if "naver_trend_df" not in st.session_state:
     st.info("왼쪽에서 키워드와 기간을 설정한 뒤 `네이버 트렌드 조회` 버튼을 눌러주세요.")
@@ -983,9 +1094,10 @@ seasonal_df = make_seasonal_planning(last_year_df, summary_df, target_year)
 
 period_text = st.session_state.get("naver_period", "")
 unit_text = st.session_state.get("naver_time_unit_label", "")
+current_time_unit = st.session_state.get("naver_time_unit", time_unit)
 
 # =====================================================
-# 12. KPI
+# 13. KPI
 # =====================================================
 top_action = summary_df.sort_values("Action Score", ascending=False).iloc[0]
 top_rising = summary_df.sort_values("변화율", ascending=False).iloc[0]
@@ -1028,7 +1140,7 @@ with c4:
     )
 
 # =====================================================
-# 13. 오늘의 MD 인사이트
+# 14. 오늘의 MD 인사이트
 # =====================================================
 st.markdown('<div class="section-title">② 오늘의 MD 인사이트</div>', unsafe_allow_html=True)
 
@@ -1076,7 +1188,7 @@ insight_html = f"""
 st.markdown(insight_html, unsafe_allow_html=True)
 
 # =====================================================
-# 14. 키워드 트렌드 그래프
+# 15. 키워드 트렌드 그래프
 # =====================================================
 st.markdown('<div class="section-title">③ 키워드 트렌드 그래프</div>', unsafe_allow_html=True)
 
@@ -1097,7 +1209,7 @@ fig = apply_dark_chart_style(fig, height=480, y_title="검색 관심도")
 st.plotly_chart(fig, use_container_width=True)
 
 # =====================================================
-# 15. Action Score 랭킹 차트
+# 16. Action Score 랭킹 차트
 # =====================================================
 st.markdown('<div class="section-title">④ MD Action Score Ranking</div>', unsafe_allow_html=True)
 
@@ -1142,7 +1254,7 @@ fig_score.update_layout(
 st.plotly_chart(fig_score, use_container_width=True)
 
 # =====================================================
-# 16. 전년도 시즌 패턴 분석
+# 17. 전년도 시즌 패턴 분석
 # =====================================================
 st.markdown('<div class="section-title">⑤ 전년도 시즌 패턴 분석</div>', unsafe_allow_html=True)
 
@@ -1168,7 +1280,7 @@ else:
     )
 
 # =====================================================
-# 17. 전년도 vs 올해 키워드 관심도 비교
+# 18. 전년도 vs 올해 키워드 관심도 비교
 # =====================================================
 if not seasonal_df.empty and not last_year_df.empty:
     st.markdown('<div class="section-title">⑤-1 전년도 vs 올해 키워드 관심도 비교</div>', unsafe_allow_html=True)
@@ -1190,53 +1302,79 @@ if not seasonal_df.empty and not last_year_df.empty:
         trend_df["키워드그룹"] == selected_keyword_compare
     ].copy()
 
-    selected_last_year_df = selected_last_year_df.sort_values("기간").reset_index(drop=True)
-    selected_this_year_df = selected_this_year_df.sort_values("기간").reset_index(drop=True)
+    selected_last_year_df = add_compare_axis(selected_last_year_df, current_time_unit)
+    selected_this_year_df = add_compare_axis(selected_this_year_df, current_time_unit)
 
     if not selected_last_year_df.empty and not selected_this_year_df.empty:
-        # 월/일 기준으로 같은 축에 겹쳐 보기
-        selected_last_year_df["월일축"] = pd.to_datetime(selected_last_year_df["기간"]).dt.dayofyear
-        selected_this_year_df["월일축"] = pd.to_datetime(selected_this_year_df["기간"]).dt.dayofyear
-
-        selected_last_year_df["라벨"] = pd.to_datetime(selected_last_year_df["기간"]).dt.strftime("%m-%d")
-        selected_this_year_df["라벨"] = pd.to_datetime(selected_this_year_df["기간"]).dt.strftime("%m-%d")
-
-        selected_last_year_df["구분"] = "전년도"
-        selected_this_year_df["구분"] = "올해"
-
-        compare_df = pd.concat(
-            [selected_last_year_df, selected_this_year_df],
-            ignore_index=True
+        future_pattern_df = make_future_pattern_df(
+            selected_last_year_df,
+            selected_this_year_df
         )
 
         last_rise, last_peak, last_decline = get_trend_points(selected_last_year_df)
-        this_rise, this_peak, this_decline = get_trend_points(selected_this_year_df)
+        this_rise, this_current_peak, _ = get_trend_points(selected_this_year_df)
 
-        fig_compare = px.line(
-            compare_df,
-            x="월일축",
-            y="관심도",
-            color="구분",
-            markers=True,
-            custom_data=["라벨", "구분"]
-        )
+        axis_setting = get_axis_setting(current_time_unit)
 
-        fig_compare.update_traces(
-            line=dict(width=4),
+        focus_start = last_rise["비교축"]
+        focus_end = last_decline["비교축"]
+        caution_start = last_decline["비교축"]
+        caution_end = min(caution_start + axis_setting["caution_width"], axis_setting["range"][1])
+
+        fig_compare = go.Figure()
+
+        # 전년도 실선
+        fig_compare.add_trace(go.Scatter(
+            x=selected_last_year_df["비교축"],
+            y=selected_last_year_df["관심도"],
+            mode="lines+markers",
+            name="전년도",
+            line=dict(color="#7CB7FF", width=4),
             marker=dict(size=7),
-            hovertemplate="<b>%{customdata[1]}</b><br>기준일: %{customdata[0]}<br>관심도: %{y}<extra></extra>"
+            customdata=selected_last_year_df[["라벨"]],
+            hovertemplate="<b>전년도</b><br>기준: %{customdata[0]}<br>관심도: %{y}<extra></extra>"
+        ))
+
+        # 올해 현재 실선
+        fig_compare.add_trace(go.Scatter(
+            x=selected_this_year_df["비교축"],
+            y=selected_this_year_df["관심도"],
+            mode="lines+markers",
+            name="올해 현재",
+            line=dict(color="#F59E0B", width=4),
+            marker=dict(size=7),
+            customdata=selected_this_year_df[["라벨"]],
+            hovertemplate="<b>올해 현재</b><br>기준: %{customdata[0]}<br>관심도: %{y}<extra></extra>"
+        ))
+
+        # 음영 구간
+        fig_compare.add_vrect(
+            x0=focus_start,
+            x1=focus_end,
+            fillcolor="#F59E0B",
+            opacity=0.10,
+            line_width=0,
+            layer="below",
+            annotation_text="전년도 기준 판매 집중 구간",
+            annotation_position="top left",
+            annotation_font=dict(color="#FBBF24", size=12)
         )
 
-        fig_compare.for_each_trace(
-            lambda t: t.update(
-                line_color="#7CB7FF" if t.name == "전년도" else "#F59E0B",
-                marker_color="#7CB7FF" if t.name == "전년도" else "#F59E0B"
-            )
+        fig_compare.add_vrect(
+            x0=caution_start,
+            x1=caution_end,
+            fillcolor="#EF4444",
+            opacity=0.10,
+            line_width=0,
+            layer="below",
+            annotation_text="전년도 기준 하락/소진 주의",
+            annotation_position="top left",
+            annotation_font=dict(color="#FCA5A5", size=12)
         )
 
         # 전년도 마커
-        fig_compare.add_scatter(
-            x=[last_rise["월일축"]],
+        fig_compare.add_trace(go.Scatter(
+            x=[last_rise["비교축"]],
             y=[last_rise["관심도"]],
             mode="markers+text",
             marker=dict(size=14, color="#22C55E"),
@@ -1244,10 +1382,10 @@ if not seasonal_df.empty and not last_year_df.empty:
             textposition="top center",
             textfont=dict(color="#FFFFFF", size=12),
             name="전년 상승"
-        )
+        ))
 
-        fig_compare.add_scatter(
-            x=[last_peak["월일축"]],
+        fig_compare.add_trace(go.Scatter(
+            x=[last_peak["비교축"]],
             y=[last_peak["관심도"]],
             mode="markers+text",
             marker=dict(size=15, color="#38BDF8"),
@@ -1255,10 +1393,10 @@ if not seasonal_df.empty and not last_year_df.empty:
             textposition="top center",
             textfont=dict(color="#FFFFFF", size=12),
             name="전년 PEAK"
-        )
+        ))
 
-        fig_compare.add_scatter(
-            x=[last_decline["월일축"]],
+        fig_compare.add_trace(go.Scatter(
+            x=[last_decline["비교축"]],
             y=[last_decline["관심도"]],
             mode="markers+text",
             marker=dict(size=14, color="#60A5FA"),
@@ -1266,11 +1404,11 @@ if not seasonal_df.empty and not last_year_df.empty:
             textposition="top center",
             textfont=dict(color="#FFFFFF", size=12),
             name="전년 하락"
-        )
+        ))
 
         # 올해 마커
-        fig_compare.add_scatter(
-            x=[this_rise["월일축"]],
+        fig_compare.add_trace(go.Scatter(
+            x=[this_rise["비교축"]],
             y=[this_rise["관심도"]],
             mode="markers+text",
             marker=dict(size=14, color="#84CC16"),
@@ -1278,115 +1416,157 @@ if not seasonal_df.empty and not last_year_df.empty:
             textposition="bottom center",
             textfont=dict(color="#FFFFFF", size=12),
             name="올해 상승"
-        )
+        ))
 
-        fig_compare.add_scatter(
-            x=[this_peak["월일축"]],
-            y=[this_peak["관심도"]],
+        fig_compare.add_trace(go.Scatter(
+            x=[this_current_peak["비교축"]],
+            y=[this_current_peak["관심도"]],
             mode="markers+text",
             marker=dict(size=15, color="#F97316"),
-            text=["올해 PEAK"],
-            textposition="bottom center",
+            text=["현재 최고점"],
+            textposition="top center",
             textfont=dict(color="#FFFFFF", size=12),
-            name="올해 PEAK"
-        )
+            name="현재 최고점"
+        ))
 
-        fig_compare.add_scatter(
-            x=[this_decline["월일축"]],
-            y=[this_decline["관심도"]],
-            mode="markers+text",
-            marker=dict(size=14, color="#EF4444"),
-            text=["올해 하락"],
-            textposition="bottom center",
-            textfont=dict(color="#FFFFFF", size=12),
-            name="올해 하락"
-        )
+        # 미래 참고선: 무조건 마지막에 그려서 가장 위에 보이게 함
+        if not future_pattern_df.empty:
+            current_last = selected_this_year_df.sort_values("비교축").iloc[-1]
 
-        fig_compare = apply_dark_chart_style(
-            fig_compare,
-            height=520,
-            y_title="검색 관심도"
-        )
+            bridge_df = pd.DataFrame([{
+                "비교축": current_last["비교축"],
+                "관심도": current_last["관심도"],
+                "라벨": current_last["라벨"]
+            }])
 
-        # 월 기준 x축 라벨
-        month_tickvals = [1, 32, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335]
-        month_ticktext = ["1월", "2월", "3월", "4월", "5월", "6월", "7월", "8월", "9월", "10월", "11월", "12월"]
+            future_plot_df = pd.concat(
+                [bridge_df, future_pattern_df[["비교축", "관심도", "라벨"]]],
+                ignore_index=True
+            ).sort_values("비교축").reset_index(drop=True)
+
+            fig_compare.add_trace(go.Scatter(
+                x=future_plot_df["비교축"],
+                y=future_plot_df["관심도"],
+                mode="lines+markers",
+                name="전년도 패턴 참고선",
+                line=dict(
+                    color="#FFD84D",
+                    width=3,
+                    dash="dashdot"
+                ),
+                marker=dict(
+                    size=7,
+                    color="#FFD84D",
+                    symbol="circle-open",
+                    line=dict(width=2, color="#FFD84D")
+                ),
+                connectgaps=False,
+                opacity=1,
+                customdata=future_plot_df[["라벨"]],
+                hovertemplate="<b>전년도 패턴 참고선</b><br>기준: %{customdata[0]}<br>참고 관심도: %{y:.1f}<extra></extra>"
+            ))
 
         fig_compare.update_layout(
+            height=540,
+            margin=dict(l=0, r=0, t=40, b=40),
+            plot_bgcolor="#0E1117",
+            paper_bgcolor="#0E1117",
+            font=dict(size=14, color="#FFFFFF"),
             title=dict(
                 text=f"{selected_keyword_compare} | 전년도 vs 올해 관심도 비교",
                 font=dict(size=20, color="#FFFFFF")
             ),
             xaxis=dict(
-                title="월 기준 흐름",
+                title=axis_setting["title"],
                 tickmode="array",
-                tickvals=month_tickvals,
-                ticktext=month_ticktext,
+                tickvals=axis_setting["tickvals"],
+                ticktext=axis_setting["ticktext"],
                 tickfont=dict(color="#FFFFFF"),
                 title_font=dict(color="#FFFFFF"),
                 gridcolor="#262730",
                 zerolinecolor="#262730",
-                range=[1, 366]
+                range=axis_setting["range"]
             ),
             yaxis=dict(
-                title="검색 관심도",
+                title="검색 관심도 / 참고 흐름",
                 tickfont=dict(color="#FFFFFF"),
                 title_font=dict(color="#FFFFFF"),
                 gridcolor="#262730",
-                zerolinecolor="#262730"
+                zerolinecolor="#262730",
+                rangemode="tozero"
             ),
             legend=dict(
                 orientation="h",
-                y=-0.25,
-                font=dict(size=12, color="#FFFFFF")
+                y=-0.28,
+                font=dict(size=12, color="#FFFFFF"),
+                bgcolor="rgba(0,0,0,0)"
             )
         )
 
         st.plotly_chart(fig_compare, use_container_width=True)
 
-        # 비교 코멘트
-        rise_gap_days = int(this_rise["월일축"] - last_rise["월일축"])
-        peak_gap_days = int(this_peak["월일축"] - last_peak["월일축"])
-        peak_diff = round(float(this_peak["관심도"] - last_peak["관심도"]), 1)
+        current_axis = selected_this_year_df["비교축"].max()
+        last_peak_axis = last_peak["비교축"]
 
-        rise_gap_weeks = round(rise_gap_days / 7, 1)
-        peak_gap_weeks = round(peak_gap_days / 7, 1)
+        if current_axis < last_peak_axis:
+            current_position = "전년도 기준 피크 전 구간"
+            md_timing = "콘텐츠 노출 강화 / 판매 집중 준비"
+        elif current_axis == last_peak_axis:
+            current_position = "전년도 기준 피크 근접 구간"
+            md_timing = "판매 집중 / 재고 회전 관리"
+        else:
+            current_position = "전년도 기준 피크 이후 구간"
+            md_timing = "추가 발주 보수적 / 소진 관리"
 
-        if rise_gap_days < 0:
-            rise_comment = f"올해 상승 시작이 전년도보다 약 {abs(rise_gap_weeks)}주 빠릅니다."
-        elif rise_gap_days > 0:
-            rise_comment = f"올해 상승 시작이 전년도보다 약 {rise_gap_weeks}주 늦습니다."
+        axis_gap = int(this_rise["비교축"] - last_rise["비교축"])
+
+        if current_time_unit == "date":
+            gap_text = f"약 {round(abs(axis_gap) / 7, 1)}주"
+        elif current_time_unit == "week":
+            gap_text = f"약 {abs(axis_gap)}주"
+        elif current_time_unit == "month":
+            gap_text = f"약 {abs(axis_gap)}개월"
+        else:
+            gap_text = f"약 {abs(axis_gap)}"
+
+        if axis_gap < 0:
+            rise_comment = f"올해 상승 시작이 전년도보다 {gap_text} 빠릅니다."
+        elif axis_gap > 0:
+            rise_comment = f"올해 상승 시작이 전년도보다 {gap_text} 늦습니다."
         else:
             rise_comment = "올해 상승 시작 시점이 전년도와 유사합니다."
 
-        if peak_gap_days < 0:
-            peak_timing_comment = f"올해 피크가 전년도보다 약 {abs(peak_gap_weeks)}주 빠릅니다."
-        elif peak_gap_days > 0:
-            peak_timing_comment = f"올해 피크가 전년도보다 약 {peak_gap_weeks}주 늦습니다."
-        else:
-            peak_timing_comment = "올해 피크 시점은 전년도와 유사합니다."
+        current_last_value = float(selected_this_year_df.iloc[-1]["관심도"])
+        nearest_last_idx = (selected_last_year_df["비교축"] - current_axis).abs().idxmin()
+        nearest_last_value = float(selected_last_year_df.loc[nearest_last_idx, "관심도"])
 
-        if peak_diff > 0:
-            peak_size_comment = f"올해 피크 강도는 전년도보다 {peak_diff}p 높습니다."
-        elif peak_diff < 0:
-            peak_size_comment = f"올해 피크 강도는 전년도보다 {abs(peak_diff)}p 낮습니다."
+        if nearest_last_value > 0:
+            strength_ratio = current_last_value / nearest_last_value
         else:
-            peak_size_comment = "올해 피크 강도는 전년도와 비슷합니다."
+            strength_ratio = 1
+
+        if strength_ratio >= 1.2:
+            strength_comment = f"올해 현재 강도는 전년도 동시점 대비 강한 편입니다. ({strength_ratio:.2f}배)"
+        elif strength_ratio <= 0.8:
+            strength_comment = f"올해 현재 강도는 전년도 동시점 대비 약한 편입니다. ({strength_ratio:.2f}배)"
+        else:
+            strength_comment = f"올해 현재 강도는 전년도와 유사한 수준입니다. ({strength_ratio:.2f}배)"
 
         st.markdown(f"""
         <div class="comment-box">
-            <p class="comment-line"><b style="color:#FFFFFF;">1.</b> 전년 상승 시작: {last_rise['라벨']} / 올해 상승 시작: {this_rise['라벨']}</p>
-            <p class="comment-line"><b style="color:#FFFFFF;">2.</b> {rise_comment}</p>
-            <p class="comment-line"><b style="color:#FFFFFF;">3.</b> 전년 피크: {last_peak['라벨']} ({last_peak['관심도']:.1f}) / 올해 피크: {this_peak['라벨']} ({this_peak['관심도']:.1f})</p>
-            <p class="comment-line"><b style="color:#FFFFFF;">4.</b> {peak_timing_comment}</p>
-            <p class="comment-line"><b style="color:#FFFFFF;">5.</b> {peak_size_comment}</p>
+            <p class="comment-line"><b style="color:#FFFFFF;">1.</b> 현재 위치: {current_position}</p>
+            <p class="comment-line"><b style="color:#FFFFFF;">2.</b> 전년 상승 시작: {last_rise['라벨']} / 올해 상승 시작: {this_rise['라벨']}</p>
+            <p class="comment-line"><b style="color:#FFFFFF;">3.</b> {rise_comment}</p>
+            <p class="comment-line"><b style="color:#FFFFFF;">4.</b> {strength_comment}</p>
+            <p class="comment-line"><b style="color:#FFFFFF;">5.</b> 전년도 기준 판매 집중 구간: {last_rise['라벨']} ~ {last_decline['라벨']}</p>
+            <p class="comment-line"><b style="color:#FFFFFF;">6.</b> MD 타이밍: {md_timing}</p>
         </div>
         """, unsafe_allow_html=True)
     else:
         st.info("선택한 키워드의 전년도 또는 올해 데이터가 부족합니다.")
 
 # =====================================================
-# 18. 올해 MD 적용 캘린더
+# 19. 올해 MD 적용 캘린더
 # =====================================================
 st.markdown('<div class="section-title">⑥ 올해 MD 적용 캘린더</div>', unsafe_allow_html=True)
 
@@ -1411,7 +1591,7 @@ else:
     )
 
 # =====================================================
-# 19. 요약 테이블
+# 20. 요약 테이블
 # =====================================================
 st.markdown('<div class="section-title">⑦ 키워드별 상승/하락 요약</div>', unsafe_allow_html=True)
 
@@ -1451,7 +1631,7 @@ st.dataframe(
 )
 
 # =====================================================
-# 20. MD 코멘트
+# 21. MD 코멘트
 # =====================================================
 st.markdown('<div class="section-title">⑧ MD 적용 코멘트</div>', unsafe_allow_html=True)
 
@@ -1473,7 +1653,7 @@ comment_box = f"""
 st.markdown(comment_box, unsafe_allow_html=True)
 
 # =====================================================
-# 21. 원본 데이터
+# 22. 원본 데이터
 # =====================================================
 with st.expander("📌 원본 트렌드 데이터 확인", expanded=False):
     st.write(f"조회 기간: {period_text}")
@@ -1493,7 +1673,7 @@ with st.expander("📌 원본 트렌드 데이터 확인", expanded=False):
         )
 
 # =====================================================
-# 22. 다운로드
+# 23. 다운로드
 # =====================================================
 st.divider()
 st.markdown('<div class="section-title">⑨ 다운로드</div>', unsafe_allow_html=True)
