@@ -721,35 +721,66 @@ top_region_progress = top_region_row["진도율"]
 # =====================================================
 comments = []
 
+risk_ratio = len(risk_stores) / store_count if store_count > 0 else 0
+good_ratio = len(good_stores) / store_count if store_count > 0 else 0
+
+# 1. 전체 진도율
 comments.append(
-    f"{view_type} 기준 {period_label} 기간 전체 매출은 {format_won(total_sales)}이며, "
-    f"목표 대비 평균 진도율은 {format_pct(avg_progress)}입니다."
+    f"평균 진도율: {format_pct(avg_progress)}"
 )
 
+# 2. BEST 지역
 comments.append(
-    f"지역 기준으로는 '{top_region}'이 진도율 {format_pct(top_region_progress)}로 가장 우수한 흐름을 보였습니다."
+    f"BEST 지역: {top_region} / {format_pct(top_region_progress)}"
 )
 
-if len(good_stores) > 0:
+# 3. BEST 매장
+comments.append(
+    f"BEST 매장: {best_store['매장']} / {format_pct(best_store['진도율'])}"
+)
+
+# 4. LOW 매장
+comments.append(
+    f"LOW 매장: {worst_store['매장']} / {format_pct(worst_store['진도율'])}"
+)
+
+# 5. 위험 매장
+if len(risk_stores) > 0:
     comments.append(
-        f"목표를 달성한 매장은 {len(good_stores)}개입니다. "
-        "해당 매장은 현재 운영 흐름이 안정적인 것으로 볼 수 있습니다."
+        f"위험 매장: {len(risk_stores)}개 / 전체 {risk_ratio * 100:.1f}%"
     )
 else:
     comments.append(
-        "목표를 달성한 매장이 아직 없어, 전 매장 기준으로 추가 매출 확보가 필요합니다."
+        "위험 매장: 없음"
     )
 
-if len(risk_stores) > 0:
+# 6. 목표달성 매장
+if len(good_stores) > 0:
     comments.append(
-        f"진도율 80% 미만의 위험 매장이 {len(risk_stores)}개 확인됩니다. "
-        "해당 매장은 방문객수, 구매건수, 객단가를 함께 점검할 필요가 있습니다."
+        f"목표달성: {len(good_stores)}개 / 전체 {good_ratio * 100:.1f}%"
+    )
+else:
+    comments.append(
+        "목표달성: 없음"
     )
 
-comments.append(
-    f"BEST 매장은 '{best_store['매장']}', LOW 매장은 '{worst_store['매장']}'입니다. "
-    "상하위 매장의 진도율 차이를 기준으로 운영 원인을 점검할 수 있습니다."
-)
+# 7. 우선 액션
+if avg_progress < 0.8:
+    comments.append(
+        "우선 액션: 전 매장 매출 보강"
+    )
+elif len(risk_stores) > 0:
+    comments.append(
+        "우선 액션: 하위 매장 집중 점검"
+    )
+elif len(good_stores) >= store_count * 0.5:
+    comments.append(
+        "우선 액션: 우수 매장 방식 확산"
+    )
+else:
+    comments.append(
+        "우선 액션: 진도율 균형 관리"
+    )
 
 # =====================================================
 # 10. 헤더

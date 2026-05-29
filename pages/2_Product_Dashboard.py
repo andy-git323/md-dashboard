@@ -304,32 +304,14 @@ def generate_md_product_comments(product_summary, cate3_summary, view_type, peri
 
     if product_summary.empty:
         return [
-            "분석 가능한 상품 데이터가 없습니다.",
-            "업로드 파일 또는 필터 조건을 확인해주세요."
+            "데이터 없음",
+            "필터 조건 확인 필요"
         ]
 
     total_sales = product_summary["판매금액"].sum()
     total_qty = product_summary["판매수량"].sum()
     total_items = product_summary["상품명"].nunique()
 
-    # CATE2 TOP
-    cate2_sales = (
-        product_summary.groupby("CATE2", observed=True)["판매금액"]
-        .sum()
-        .sort_values(ascending=False)
-    )
-
-    if not cate2_sales.empty:
-        top_cate2 = cate2_sales.index[0]
-        top_cate2_sales = cate2_sales.iloc[0]
-        top_cate2_share = top_cate2_sales / total_sales if total_sales > 0 else 0
-
-        comments.append(
-            f"{view_type} 기준 {period_label} 기간에는 '{top_cate2}' 카테고리가 "
-            f"전체 판매금액의 {top_cate2_share * 100:.1f}%를 차지하며 가장 높은 매출 비중을 보였습니다."
-        )
-
-    # 판매율 계산
     product_summary = product_summary.copy()
 
     if "판매율" not in product_summary.columns:
@@ -343,16 +325,17 @@ def generate_md_product_comments(product_summary, cate3_summary, view_type, peri
         product_summary["재고수량"] = product_summary["입고수량"] - product_summary["판매수량"]
         product_summary["재고수량"] = product_summary["재고수량"].clip(lower=0)
 
-    # 기준별 상품 분류
-    high_sell_through = product_summary[
-        (product_summary["판매율"] >= 0.7) &
-        (product_summary["판매금액"] > 0)
-    ]
+    cate2_sales = (
+        product_summary.groupby("CATE2", observed=True)["판매금액"]
+        .sum()
+        .sort_values(ascending=False)
+    )
 
-    reorder_candidates = product_summary[
-        (product_summary["판매율"] >= 0.8) &
-        (product_summary["재고수량"] <= 50)
-    ]
+    top_cate2 = cate2_sales.index[0]
+    top_cate2_share = cate2_sales.iloc[0] / total_sales if total_sales > 0 else 0
+
+    top_item = product_summary.sort_values("판매금액", ascending=False).iloc[0]
+    low_item = product_summary.sort_values("판매율", ascending=True).iloc[0]
 
     stock_risk = product_summary[
         (product_summary["판매율"] < 0.3) &
@@ -364,50 +347,59 @@ def generate_md_product_comments(product_summary, cate3_summary, view_type, peri
         (product_summary["판매율"] < 0.4)
     ]
 
-    # 효자상품 코멘트
-    if len(high_sell_through) > 0:
-        best_item = high_sell_through.sort_values("판매금액", ascending=False).iloc[0]
-        comments.append(
-            f"판매율 70% 이상인 우수 상품은 {len(high_sell_through)}개입니다. "
-            f"특히 '{best_item['상품명']}'은 판매율과 판매금액이 모두 양호해 핵심 판매 상품으로 볼 수 있습니다."
-        )
-    else:
-        comments.append(
-            "판매율 70% 이상인 고효율 상품이 많지 않아, 주력 상품의 판매 속도 점검이 필요합니다."
-        )
+    reorder_candidates = product_summary[
+        (product_summary["판매율"] >= 0.8) &
+        (product_summary["재고수량"] <= 50)
+    ]
 
-    # 재고주의 코멘트
+    comments.append(
+        f"매출 중심: {top_cate2} {top_cate2_share * 100:.1f}%"
+    )
+
+    comments.append(
+        f"TOP 상품: {top_item['상품명']} / {format_won(top_item['판매금액'])}"
+    )
+
     if len(stock_risk) > 0:
-        worst_item = stock_risk.sort_values("재고수량", ascending=False).iloc[0]
         comments.append(
-            f"판매율이 낮고 재고가 많은 재고주의 상품이 {len(stock_risk)}개 확인됩니다. "
-            f"'{worst_item['상품명']}'은 재고수량이 높아 소진 전략 검토가 필요합니다."
+            f"재고주의: {len(stock_risk)}개"
         )
     else:
         comments.append(
-            "판매율 30% 미만이면서 재고수량이 높은 재고주의 상품은 현재 크게 부각되지 않습니다."
+            "재고주의: 없음"
         )
 
-    # 할인주의 코멘트
     if len(discount_risk) > 0:
         comments.append(
-            f"할인율 15% 이상이지만 판매율이 낮은 할인주의 상품이 {len(discount_risk)}개 있습니다. "
-            "가격 할인만으로 반응이 약한 상품은 노출 방식, 스타일링, 상품력 점검이 필요합니다."
+            f"할인주의: {len(discount_risk)}개"
+        )
+    else:
+        comments.append(
+            "할인주의: 없음"
         )
 
-    # 추가 발주 후보
     if len(reorder_candidates) > 0:
         reorder_item = reorder_candidates.sort_values("판매율", ascending=False).iloc[0]
         comments.append(
-            f"판매율 80% 이상이면서 재고가 낮은 추가 발주 후보가 {len(reorder_candidates)}개 있습니다. "
-            f"'{reorder_item['상품명']}'은 재고 부족 가능성이 있어 추가 생산 또는 유사 상품 확대를 검토할 수 있습니다."
+            f"리오더 후보: {reorder_item['상품명']}"
+        )
+    else:
+        comments.append(
+            "리오더 후보: 없음"
         )
 
-    # 전체 요약
     comments.append(
-        f"전체 기준으로는 총 {total_items}개 상품에서 {total_qty:,.0f}개가 판매되었고, "
-        f"총 판매금액은 {format_won(total_sales)}입니다."
+        f"LOW 상품: {low_item['상품명']} / 판매율 {format_pct(low_item['판매율'])}"
     )
+
+    if len(stock_risk) > 0:
+        comments.append("우선 액션: 재고 소진")
+    elif len(discount_risk) > 0:
+        comments.append("우선 액션: 할인 효율 점검")
+    elif len(reorder_candidates) > 0:
+        comments.append("우선 액션: 리오더 검토")
+    else:
+        comments.append("우선 액션: TOP 상품 확대")
 
     return comments
 

@@ -779,38 +779,75 @@ worst_item = low_items.iloc[0]
 # =====================================================
 comments = []
 
+stock_risk_ratio = len(stock_risk_items) / total_items if total_items > 0 else 0
+discount_risk_ratio = len(discount_risk_items) / total_items if total_items > 0 else 0
+
+top_item = top_items.iloc[0]
+low_item = low_items.iloc[0]
+
+# 1. 매출 중심
 comments.append(
-    f"{view_type} 기준 {period_label} 기간에는 '{top_cate2}' 카테고리가 "
-    f"전체 판매금액의 {top_cate2_share * 100:.1f}%를 차지하며 가장 높은 매출 비중을 보였습니다."
+    f"매출 중심: {top_cate2} {top_cate2_share * 100:.1f}%"
 )
 
+# 2. TOP 상품
+comments.append(
+    f"TOP 상품: {top_item['상품명']} / {format_won(top_item['판매금액'])}"
+)
+
+# 3. 재고주의
 if len(stock_risk_items) > 0:
     comments.append(
-        f"판매율이 낮고 재고가 많은 재고주의 상품이 {len(stock_risk_items)}개 확인됩니다. "
-        "해당 상품은 소진 전략과 노출 강화가 필요합니다."
+        f"재고주의: {len(stock_risk_items)}개 / 전체 {stock_risk_ratio * 100:.1f}%"
     )
 else:
     comments.append(
-        "판매율 30% 미만이면서 재고수량이 높은 재고주의 상품은 크게 부각되지 않습니다."
+        "재고주의: 없음"
     )
 
+# 4. 할인주의
 if len(discount_risk_items) > 0:
     comments.append(
-        f"할인율 15% 이상이지만 판매율이 낮은 할인주의 상품이 {len(discount_risk_items)}개 있습니다. "
-        "가격 할인만으로 반응이 약한 상품은 상품력과 스타일링 점검이 필요합니다."
+        f"할인주의: {len(discount_risk_items)}개 / 전체 {discount_risk_ratio * 100:.1f}%"
     )
-
-if len(reorder_items) > 0:
+else:
     comments.append(
-        f"판매율 80% 이상이면서 재고가 낮은 추가 발주 후보가 {len(reorder_items)}개 있습니다. "
-        "추가 생산 또는 유사 상품 확대를 검토할 수 있습니다."
+        "할인주의: 없음"
     )
 
+# 5. 리오더 후보
+if len(reorder_items) > 0:
+    reorder_item = reorder_items.sort_values("판매율", ascending=False).iloc[0]
+    comments.append(
+        f"리오더 후보: {reorder_item['상품명']} / 판매율 {format_pct(reorder_item['판매율'])}"
+    )
+else:
+    comments.append(
+        "리오더 후보: 없음"
+    )
+
+# 6. LOW 상품
 comments.append(
-    f"전체 기준으로 총 {total_items}개 상품에서 {total_qty:,.0f}개가 판매되었고, "
-    f"총 판매금액은 {format_won(total_sales)}입니다."
+    f"LOW 상품: {low_item['상품명']} / 판매율 {format_pct(low_item['판매율'])}"
 )
 
+# 7. 우선 액션
+if stock_risk_ratio >= 0.3:
+    comments.append(
+        "우선 액션: 재고 소진"
+    )
+elif len(discount_risk_items) > 0:
+    comments.append(
+        "우선 액션: 할인 효율 점검"
+    )
+elif len(reorder_items) > 0:
+    comments.append(
+        "우선 액션: 리오더 검토"
+    )
+else:
+    comments.append(
+        "우선 액션: TOP 상품 확대"
+    )
 # =====================================================
 # 10. 헤더
 # =====================================================
