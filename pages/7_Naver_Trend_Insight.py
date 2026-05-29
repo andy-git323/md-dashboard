@@ -945,7 +945,7 @@ if run_button:
         client_secret=client_secret,
         start_date=last_year_start,
         end_date=last_year_end,
-        time_unit="week",
+        time_unit=time_unit,
         keyword_groups=keyword_groups,
         device=device_label,
         gender=gender_label,
@@ -1194,8 +1194,9 @@ if not seasonal_df.empty and not last_year_df.empty:
     selected_this_year_df = selected_this_year_df.sort_values("기간").reset_index(drop=True)
 
     if not selected_last_year_df.empty and not selected_this_year_df.empty:
-        selected_last_year_df["비교순번"] = range(1, len(selected_last_year_df) + 1)
-        selected_this_year_df["비교순번"] = range(1, len(selected_this_year_df) + 1)
+        # 월/일 기준으로 같은 축에 겹쳐 보기
+        selected_last_year_df["월일축"] = pd.to_datetime(selected_last_year_df["기간"]).dt.dayofyear
+        selected_this_year_df["월일축"] = pd.to_datetime(selected_this_year_df["기간"]).dt.dayofyear
 
         selected_last_year_df["라벨"] = pd.to_datetime(selected_last_year_df["기간"]).dt.strftime("%m-%d")
         selected_this_year_df["라벨"] = pd.to_datetime(selected_this_year_df["기간"]).dt.strftime("%m-%d")
@@ -1213,7 +1214,7 @@ if not seasonal_df.empty and not last_year_df.empty:
 
         fig_compare = px.line(
             compare_df,
-            x="비교순번",
+            x="월일축",
             y="관심도",
             color="구분",
             markers=True,
@@ -1233,8 +1234,9 @@ if not seasonal_df.empty and not last_year_df.empty:
             )
         )
 
+        # 전년도 마커
         fig_compare.add_scatter(
-            x=[last_rise["비교순번"]],
+            x=[last_rise["월일축"]],
             y=[last_rise["관심도"]],
             mode="markers+text",
             marker=dict(size=14, color="#22C55E"),
@@ -1245,7 +1247,7 @@ if not seasonal_df.empty and not last_year_df.empty:
         )
 
         fig_compare.add_scatter(
-            x=[last_peak["비교순번"]],
+            x=[last_peak["월일축"]],
             y=[last_peak["관심도"]],
             mode="markers+text",
             marker=dict(size=15, color="#38BDF8"),
@@ -1256,7 +1258,7 @@ if not seasonal_df.empty and not last_year_df.empty:
         )
 
         fig_compare.add_scatter(
-            x=[last_decline["비교순번"]],
+            x=[last_decline["월일축"]],
             y=[last_decline["관심도"]],
             mode="markers+text",
             marker=dict(size=14, color="#60A5FA"),
@@ -1266,8 +1268,9 @@ if not seasonal_df.empty and not last_year_df.empty:
             name="전년 하락"
         )
 
+        # 올해 마커
         fig_compare.add_scatter(
-            x=[this_rise["비교순번"]],
+            x=[this_rise["월일축"]],
             y=[this_rise["관심도"]],
             mode="markers+text",
             marker=dict(size=14, color="#84CC16"),
@@ -1278,7 +1281,7 @@ if not seasonal_df.empty and not last_year_df.empty:
         )
 
         fig_compare.add_scatter(
-            x=[this_peak["비교순번"]],
+            x=[this_peak["월일축"]],
             y=[this_peak["관심도"]],
             mode="markers+text",
             marker=dict(size=15, color="#F97316"),
@@ -1289,7 +1292,7 @@ if not seasonal_df.empty and not last_year_df.empty:
         )
 
         fig_compare.add_scatter(
-            x=[this_decline["비교순번"]],
+            x=[this_decline["월일축"]],
             y=[this_decline["관심도"]],
             mode="markers+text",
             marker=dict(size=14, color="#EF4444"),
@@ -1301,9 +1304,13 @@ if not seasonal_df.empty and not last_year_df.empty:
 
         fig_compare = apply_dark_chart_style(
             fig_compare,
-            height=500,
+            height=520,
             y_title="검색 관심도"
         )
+
+        # 월 기준 x축 라벨
+        month_tickvals = [1, 32, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335]
+        month_ticktext = ["1월", "2월", "3월", "4월", "5월", "6월", "7월", "8월", "9월", "10월", "11월", "12월"]
 
         fig_compare.update_layout(
             title=dict(
@@ -1311,11 +1318,15 @@ if not seasonal_df.empty and not last_year_df.empty:
                 font=dict(size=20, color="#FFFFFF")
             ),
             xaxis=dict(
-                title="주차 흐름 비교",
+                title="월 기준 흐름",
+                tickmode="array",
+                tickvals=month_tickvals,
+                ticktext=month_ticktext,
                 tickfont=dict(color="#FFFFFF"),
                 title_font=dict(color="#FFFFFF"),
                 gridcolor="#262730",
-                zerolinecolor="#262730"
+                zerolinecolor="#262730",
+                range=[1, 366]
             ),
             yaxis=dict(
                 title="검색 관심도",
@@ -1333,21 +1344,25 @@ if not seasonal_df.empty and not last_year_df.empty:
 
         st.plotly_chart(fig_compare, use_container_width=True)
 
-        rise_gap = int(this_rise["비교순번"] - last_rise["비교순번"])
-        peak_gap = int(this_peak["비교순번"] - last_peak["비교순번"])
+        # 비교 코멘트
+        rise_gap_days = int(this_rise["월일축"] - last_rise["월일축"])
+        peak_gap_days = int(this_peak["월일축"] - last_peak["월일축"])
         peak_diff = round(float(this_peak["관심도"] - last_peak["관심도"]), 1)
 
-        if rise_gap < 0:
-            rise_comment = f"올해 상승 시작이 전년도보다 {abs(rise_gap)}주 빠릅니다."
-        elif rise_gap > 0:
-            rise_comment = f"올해 상승 시작이 전년도보다 {rise_gap}주 늦습니다."
+        rise_gap_weeks = round(rise_gap_days / 7, 1)
+        peak_gap_weeks = round(peak_gap_days / 7, 1)
+
+        if rise_gap_days < 0:
+            rise_comment = f"올해 상승 시작이 전년도보다 약 {abs(rise_gap_weeks)}주 빠릅니다."
+        elif rise_gap_days > 0:
+            rise_comment = f"올해 상승 시작이 전년도보다 약 {rise_gap_weeks}주 늦습니다."
         else:
             rise_comment = "올해 상승 시작 시점이 전년도와 유사합니다."
 
-        if peak_gap < 0:
-            peak_timing_comment = f"올해 피크가 전년도보다 {abs(peak_gap)}주 빠릅니다."
-        elif peak_gap > 0:
-            peak_timing_comment = f"올해 피크가 전년도보다 {peak_gap}주 늦습니다."
+        if peak_gap_days < 0:
+            peak_timing_comment = f"올해 피크가 전년도보다 약 {abs(peak_gap_weeks)}주 빠릅니다."
+        elif peak_gap_days > 0:
+            peak_timing_comment = f"올해 피크가 전년도보다 약 {peak_gap_weeks}주 늦습니다."
         else:
             peak_timing_comment = "올해 피크 시점은 전년도와 유사합니다."
 
