@@ -116,6 +116,7 @@ def format_won(value):
 def format_pct(value):
     return f"{value * 100:.1f}%"
 
+
 def create_store_template_excel():
     sample_data = pd.DataFrame({
         "일자": [
@@ -186,6 +187,7 @@ def create_store_template_excel():
 
     output.seek(0)
     return output
+
 
 def kpi_card(label, value, sub_text=""):
     st.markdown(f"""
@@ -300,10 +302,8 @@ REQUIRED_COLUMNS = [
 def prepare_store_data(input_df):
     df_prepared = input_df.copy()
 
-    # 컬럼명 앞뒤 공백 제거
     df_prepared.columns = df_prepared.columns.astype(str).str.strip()
 
-    # 필수 컬럼 확인
     missing_cols = [
         col for col in REQUIRED_COLUMNS
         if col not in df_prepared.columns
@@ -317,20 +317,17 @@ def prepare_store_data(input_df):
         """)
         st.stop()
 
-    # 날짜 변환
     df_prepared["일자"] = pd.to_datetime(df_prepared["일자"], errors="coerce")
 
     if df_prepared["일자"].isna().any():
         st.error("일자 컬럼에 날짜로 변환할 수 없는 값이 있습니다.")
         st.stop()
 
-    # 숫자 컬럼 변환
     number_cols = ["일목표", "일매출", "방문객수", "구매건수"]
 
     for col in number_cols:
         df_prepared[col] = pd.to_numeric(df_prepared[col], errors="coerce").fillna(0)
 
-    # 객단가 컬럼이 없으면 자동 생성
     if "객단가" not in df_prepared.columns:
         df_prepared["객단가"] = np.where(
             df_prepared["구매건수"] > 0,
@@ -343,12 +340,10 @@ def prepare_store_data(input_df):
             errors="coerce"
         ).fillna(0)
 
-    # 주차 / 월 / 요일 생성
     df_prepared["주차"] = df_prepared["일자"].dt.strftime("%Y-W%U")
     df_prepared["월"] = df_prepared["일자"].dt.strftime("%Y-%m")
     df_prepared["요일"] = df_prepared["일자"].dt.day_name()
 
-    # 지역 / 매장 순서 적용
     df_prepared["지역"] = pd.Categorical(
         df_prepared["지역"],
         categories=REGION_ORDER,
@@ -406,7 +401,7 @@ else:
     st.sidebar.info("샘플 데이터 사용 중")
 
 # =====================================================
-# 6. 사이드바
+# 7. 사이드바
 # =====================================================
 st.sidebar.title("⚙️ 조회 조건")
 
@@ -458,7 +453,7 @@ else:
     )
 
 # =====================================================
-# 7. 데이터 필터링
+# 8. 데이터 필터링
 # =====================================================
 df_selected = df[
     (df["지역"].isin(selected_regions)) &
@@ -470,7 +465,7 @@ if df_selected.empty:
     st.stop()
 
 # =====================================================
-# 8. 일간 / 주간 / 월간 집계
+# 9. 일간 / 주간 / 월간 집계
 # =====================================================
 if view_type == "일간":
     filtered = df_selected[df_selected["일자"].dt.date == selected_date]
@@ -537,7 +532,7 @@ summary["매장"] = pd.Categorical(
 summary = summary.sort_values(["지역", "매장"]).reset_index(drop=True)
 
 # =====================================================
-# 9. 헤더
+# 10. 헤더
 # =====================================================
 st.markdown('<div class="title">🏬 Store Target Progress Dashboard</div>', unsafe_allow_html=True)
 st.markdown(
@@ -589,7 +584,7 @@ with st.expander("📌 현재 적용 데이터 확인", expanded=False):
     )
 
 # =====================================================
-# 10. 전체 KPI
+# 11. 전체 KPI
 # =====================================================
 total_target = summary[target_col_name].sum()
 total_sales = summary[sales_col_name].sum()
@@ -634,7 +629,74 @@ with c8:
     kpi_card("객단가", format_won(total_avg_price))
 
 # =====================================================
-# 11. 지역별 목표 대비 진도율
+# 12. Store 자동 코멘트
+# =====================================================
+st.markdown('<div class="section-title">📌 Store 자동 코멘트</div>', unsafe_allow_html=True)
+
+comment_summary = summary.copy()
+
+best_store = comment_summary.sort_values("진도율", ascending=False).iloc[0]
+worst_store = comment_summary.sort_values("진도율", ascending=True).iloc[0]
+
+region_comment_summary = comment_summary.groupby("지역", as_index=False, observed=False).agg({
+    target_col_name: "sum",
+    sales_col_name: "sum"
+})
+
+region_comment_summary["진도율"] = np.where(
+    region_comment_summary[target_col_name] > 0,
+    region_comment_summary[sales_col_name] / region_comment_summary[target_col_name],
+    0
+)
+
+best_region = region_comment_summary.sort_values("진도율", ascending=False).iloc[0]
+risk_stores = comment_summary[comment_summary["진도율"] < 0.8]
+good_stores = comment_summary[comment_summary["진도율"] >= 1.0]
+
+store_comments = [
+    f"평균 진도율: {format_pct(total_progress)}",
+    f"BEST 지역: {best_region['지역']} / {format_pct(best_region['진도율'])}",
+    f"BEST 매장: {best_store['매장']} / {format_pct(best_store['진도율'])}",
+    f"LOW 매장: {worst_store['매장']} / {format_pct(worst_store['진도율'])}",
+    f"위험 매장: {len(risk_stores)}개" if len(risk_stores) > 0 else "위험 매장: 없음",
+    f"목표달성: {len(good_stores)}개" if len(good_stores) > 0 else "목표달성: 없음",
+]
+
+if total_progress < 0.8:
+    store_comments.append("우선 액션: 전 매장 매출 보강")
+elif len(risk_stores) > 0:
+    store_comments.append("우선 액션: 하위 매장 점검")
+elif len(good_stores) >= len(comment_summary) * 0.5:
+    store_comments.append("우선 액션: 우수 매장 방식 확산")
+else:
+    store_comments.append("우선 액션: 진도율 균형 관리")
+
+comment_lines = ""
+
+for idx, comment in enumerate(store_comments, start=1):
+    comment_lines += (
+        f'<p style="color:#E5E7EB; font-size:15px; line-height:1.75; margin-bottom:12px;">'
+        f'<b style="color:#FFFFFF;">{idx}.</b> {comment}'
+        f'</p>'
+    )
+
+comment_box = (
+    '<div style="'
+    'background-color:#171B26; '
+    'border:1px solid #2A2F3A; '
+    'border-radius:18px; '
+    'padding:22px 26px; '
+    'margin-top:10px; '
+    'margin-bottom:26px;'
+    '">'
+    f'{comment_lines}'
+    '</div>'
+)
+
+st.markdown(comment_box, unsafe_allow_html=True)
+
+# =====================================================
+# 13. 지역별 목표 대비 진도율
 # =====================================================
 st.markdown('<div class="section-title">② 지역별 목표 대비 진도율</div>', unsafe_allow_html=True)
 
@@ -750,7 +812,7 @@ with r_right:
     )
 
 # =====================================================
-# 12. 매장별 목표 대비 진도율
+# 14. 매장별 목표 대비 진도율
 # =====================================================
 st.markdown('<div class="section-title">③ 매장별 목표 대비 진도율</div>', unsafe_allow_html=True)
 
@@ -803,7 +865,7 @@ fig_progress.update_yaxes(
 st.plotly_chart(fig_progress, use_container_width=True)
 
 # =====================================================
-# 13. 매장별 목표 vs 매출
+# 15. 매장별 목표 vs 매출
 # =====================================================
 st.markdown('<div class="section-title">④ 매장별 목표 vs 매출</div>', unsafe_allow_html=True)
 
@@ -879,7 +941,7 @@ fig_compare.update_layout(
 st.plotly_chart(fig_compare, use_container_width=True)
 
 # =====================================================
-# 14. 매장별 상세 현황
+# 16. 매장별 상세 현황
 # =====================================================
 st.markdown('<div class="section-title">⑤ 매장별 상세 현황</div>', unsafe_allow_html=True)
 
@@ -912,7 +974,7 @@ st.dataframe(
 )
 
 # =====================================================
-# 15. 우수 매장 / 위험 매장
+# 17. 우수 매장 / 위험 매장
 # =====================================================
 st.markdown('<div class="section-title">⑥ 우수 매장 / 위험 매장</div>', unsafe_allow_html=True)
 
@@ -950,7 +1012,7 @@ with right:
     )
 
 # =====================================================
-# 16. 일자별 매출 추이
+# 18. 일자별 매출 추이
 # =====================================================
 st.markdown('<div class="section-title">⑦ 일자별 매출 추이</div>', unsafe_allow_html=True)
 
@@ -990,7 +1052,7 @@ fig_trend.update_yaxes(title="금액")
 st.plotly_chart(fig_trend, use_container_width=True)
 
 # =====================================================
-# 17. 다운로드
+# 19. 다운로드
 # =====================================================
 st.divider()
 st.markdown('<div class="section-title">⑧ 데이터 다운로드</div>', unsafe_allow_html=True)
@@ -1006,7 +1068,7 @@ st.download_button(
 )
 
 # =====================================================
-# 18. 안내
+# 20. 안내
 # =====================================================
 with st.expander("📌 이 대시보드에서 보는 핵심"):
     st.markdown("""
