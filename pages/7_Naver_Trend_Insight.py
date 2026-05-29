@@ -90,6 +90,67 @@ st.markdown("""
         line-height: 1.75;
         margin-bottom: 12px;
     }
+
+    .insight-card {
+        background: linear-gradient(135deg, #171B26 0%, #111827 100%);
+        border: 1px solid #2A2F3A;
+        border-radius: 22px;
+        padding: 26px 30px;
+        margin-top: 10px;
+        margin-bottom: 28px;
+        box-shadow: 0px 4px 16px rgba(0,0,0,0.28);
+    }
+
+    .insight-label {
+        font-size: 13px;
+        color: #9CA3AF;
+        margin-bottom: 8px;
+        letter-spacing: 0.5px;
+    }
+
+    .insight-title {
+        font-size: 30px;
+        font-weight: 900;
+        color: #FFFFFF;
+        margin-bottom: 16px;
+    }
+
+    .insight-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 14px;
+        margin-top: 18px;
+    }
+
+    .insight-item {
+        background-color: #0E1117;
+        border: 1px solid #2A2F3A;
+        border-radius: 14px;
+        padding: 14px 16px;
+    }
+
+    .insight-item-label {
+        font-size: 12px;
+        color: #9CA3AF;
+        margin-bottom: 6px;
+    }
+
+    .insight-item-value {
+        font-size: 17px;
+        font-weight: 800;
+        color: #FFFFFF;
+    }
+
+    .insight-action {
+        margin-top: 18px;
+        background-color: #1F2937;
+        border-left: 5px solid #F59E0B;
+        padding: 16px 18px;
+        border-radius: 12px;
+        color: #FFFFFF;
+        font-size: 17px;
+        font-weight: 800;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -690,6 +751,8 @@ unit_text = st.session_state.get("naver_time_unit_label", "")
 top_action = summary_df.sort_values("Action Score", ascending=False).iloc[0]
 top_rising = summary_df.sort_values("변화율", ascending=False).iloc[0]
 top_interest = summary_df.sort_values("최근평균", ascending=False).iloc[0]
+lowest_action = summary_df.sort_values("Action Score", ascending=True).iloc[0]
+
 rising_count = len(summary_df[summary_df["상태"].isin(["상승", "급상승"])])
 falling_count = len(summary_df[summary_df["상태"].isin(["하락", "급하락"])])
 
@@ -726,9 +789,61 @@ with c4:
     )
 
 # =====================================================
-# 13. 키워드 트렌드 그래프
+# 13. 오늘의 MD 인사이트
 # =====================================================
-st.markdown('<div class="section-title">② 키워드 트렌드 그래프</div>', unsafe_allow_html=True)
+st.markdown('<div class="section-title">② 오늘의 MD 인사이트</div>', unsafe_allow_html=True)
+
+insight_html = f"""
+<div class="insight-card">
+<div class="insight-label">TODAY TREND INSIGHT</div>
+<div class="insight-title">{top_action['키워드그룹']} 중심으로 검토</div>
+
+<div class="insight-grid">
+
+<div class="insight-item">
+<div class="insight-item-label">Action Score</div>
+<div class="insight-item-value">{top_action['Action Score']:.1f}점</div>
+</div>
+
+<div class="insight-item">
+<div class="insight-item-label">판단</div>
+<div class="insight-item-value">{top_action['판단']}</div>
+</div>
+
+<div class="insight-item">
+<div class="insight-item-label">적용 카테고리</div>
+<div class="insight-item-value">{top_action['MD카테고리']} / {top_action['세부카테고리']}</div>
+</div>
+
+<div class="insight-item">
+<div class="insight-item-label">시즌 연결</div>
+<div class="insight-item-value">{top_action['시즌']}</div>
+</div>
+
+<div class="insight-item">
+<div class="insight-item-label">급상승 키워드</div>
+<div class="insight-item-value">{top_rising['키워드그룹']} / {top_rising['변화율']:.1f}%</div>
+</div>
+
+<div class="insight-item">
+<div class="insight-item-label">주의 키워드</div>
+<div class="insight-item-value">{lowest_action['키워드그룹']} / {lowest_action['Action Score']:.1f}점</div>
+</div>
+
+</div>
+
+<div class="insight-action">
+우선 액션: {top_action['기본액션']}
+</div>
+</div>
+"""
+
+st.markdown(insight_html, unsafe_allow_html=True)
+
+# =====================================================
+# 14. 키워드 트렌드 그래프
+# =====================================================
+st.markdown('<div class="section-title">③ 키워드 트렌드 그래프</div>', unsafe_allow_html=True)
 
 fig = px.line(
     trend_df,
@@ -747,9 +862,9 @@ fig = apply_dark_chart_style(fig, height=480, y_title="검색 관심도")
 st.plotly_chart(fig, use_container_width=True)
 
 # =====================================================
-# 14. Action Score 랭킹 차트
+# 15. Action Score 랭킹 차트
 # =====================================================
-st.markdown('<div class="section-title">③ MD Action Score Ranking</div>', unsafe_allow_html=True)
+st.markdown('<div class="section-title">④ MD Action Score Ranking</div>', unsafe_allow_html=True)
 
 fig_score = px.bar(
     summary_df.sort_values("Action Score", ascending=True),
@@ -792,9 +907,9 @@ fig_score.update_layout(
 st.plotly_chart(fig_score, use_container_width=True)
 
 # =====================================================
-# 15. 요약 테이블
+# 16. 요약 테이블
 # =====================================================
-st.markdown('<div class="section-title">④ 키워드별 상승/하락 요약</div>', unsafe_allow_html=True)
+st.markdown('<div class="section-title">⑤ 키워드별 상승/하락 요약</div>', unsafe_allow_html=True)
 
 display_summary = summary_df.copy()
 
@@ -832,9 +947,9 @@ st.dataframe(
 )
 
 # =====================================================
-# 16. MD 코멘트
+# 17. MD 코멘트
 # =====================================================
-st.markdown('<div class="section-title">⑤ MD 적용 코멘트</div>', unsafe_allow_html=True)
+st.markdown('<div class="section-title">⑥ MD 적용 코멘트</div>', unsafe_allow_html=True)
 
 comment_lines = ""
 
@@ -854,7 +969,7 @@ comment_box = f"""
 st.markdown(comment_box, unsafe_allow_html=True)
 
 # =====================================================
-# 17. 원본 데이터
+# 18. 원본 데이터
 # =====================================================
 with st.expander("📌 원본 트렌드 데이터 확인", expanded=False):
     st.write(f"조회 기간: {period_text}")
@@ -866,10 +981,10 @@ with st.expander("📌 원본 트렌드 데이터 확인", expanded=False):
     )
 
 # =====================================================
-# 18. 다운로드
+# 19. 다운로드
 # =====================================================
 st.divider()
-st.markdown('<div class="section-title">⑥ 다운로드</div>', unsafe_allow_html=True)
+st.markdown('<div class="section-title">⑦ 다운로드</div>', unsafe_allow_html=True)
 
 excel_file = create_excel_download(
     trend_df=trend_df,
